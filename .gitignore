@@ -1,0 +1,93 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Notebook
+.ipynb_checkpoints
+.ipynb_checkpoints/*
+
+# Sphinx documentation
+docs/_build/
+
+# R project settings
+.Rproj.user
+.Rhistory
+*.Rproj
+*.RData
+cache/
+**/render/**/*.html
+**/render/current
+*.spin.R*
+renv/
+.Rprofile
+
+# Figures
+*.pdf
+*.png
+*.eps
+*.svg
+
+# Data
+*.gz
+*.bgz
+*.tsv
+*.csv
+*.txt
+!requirements*.txt
+*.log
+*.xls
+*.xlsx
+*.zip
+*.pptx
+
+# MacOS
+.DS_Store
+
+# Artifacts
+log/
+script/
+current/
+data
+
+# vscode
+.vscode/
+
+# Rmd options
+*sandbox.Rmd
+_output.yml
+!R/_output.yml
+_header.yml
+!R/_header.yml
+
+# Docker
+server/*.gz
+server/*.txt
+
+# Development
+rpackages/
+packages/
+
+# ENV
+.env

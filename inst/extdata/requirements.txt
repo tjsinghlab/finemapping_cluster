@@ -1,0 +1,13 @@
+tidyverse
+here
+devtools
+fs
+tidylog
+extrafont
+reticulate
+rmarkdown
+knitr
+bookdown
+kableExtra
+TarjinderSingh/setupr
+TarjinderSingh/tjthemes
