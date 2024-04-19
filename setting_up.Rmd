@@ -16,19 +16,19 @@ library(ggplot2)
 source("src/finemapping_functions.R")
 ```
 
+
+Read in GWAS and lead SNP info:
 ```{r}
 gwasEUR_og <- fread("../AID_GWAS/SumStats/IBD/natgen_2015_PMID26192919/EUR.IBD.gwas_info03_filtered.assoc")
-#gwasMULT <- fread("../AID_GWAS/SumStats/IBD/natgen_2015_PMID26192919/trans_ethnic_Immunochip/IBD_trans_ethnic_association_summ_stats_b37.txt")
+
 leadSNPs <- fread("../AID_GWAS/SumStats/IBD/natgen_2015_PMID26192919/Lead_SNPS_IBD_NATGEN_2015.csv")
 colnames(leadSNPs) <- c("chr", "og_SNP", "og_SNP_BP37", "pheno", "BF", "top_SNP", "top_SNP_BP37", "P", "R2")
-
 ```
 
-
+prepare lead SNP df and GWAS, save prepared GWAS to file so that we can use SLURM to parallelize finemapping by locus
 ```{r}
-
 #df.leadSNP has columns BP, CHR, locus
-#df.sumstats has columns chromosome, position, allele1, allele2, assuming allele1 is effect allele, beta, se
+#df.sumstats has columns chromosome, position, allele1 (assuming allele1 is effect allele), allele2, beta, se
 leadSNPs.1 <- leadSNPs %>% 
   filter(pheno == "IBD") %>% 
   mutate(locus = paste0(chr, ":", top_SNP_BP37)) %>% 
@@ -40,7 +40,30 @@ gwasEUR <- gwasEUR_og %>%
 write_tsv(gwasEUR, "data/IBD.EUR.assoc")
 ```
 
+I needed to check that the SE was the SE of BETA not OR:
 ```{r}
-generate_per_locus_data_and_submit_pipeline(df.leadSNP = leadSNPs.1, "data/IBD.EUR.assoc", "EUR.IBD", 34694, 12924, 0.25, "EUR")
+gwasEUR_og %>% 
+  mutate(p_check = pnorm(abs(log(OR)/SE), lower.tail = F)*2) %>% 
+  sample_n(1000000) %>% 
+  ggplot() + geom_point(aes(x = log(P), y = log(p_check))) #ok SE is SE of beta not OR!
 ```
+
+Submit pipeline!
+```{r}
+generate_per_locus_data_and_submit_pipeline(df.leadSNP = leadSNPs.1, 
+                                            path_df_sumstats = "data/IBD.EUR.assoc", 
+                                            sumstats_name = "2015_IBD_EUR", 
+                                            N_tot = 34694, 
+                                            N_cases = 12924, 
+                                            window_mb = 0.25, 
+                                            ld_pop = "EUR")
+```
+
+after pipeline finishes:
+```{r}
+source("src/post_finemapping_functions.R")
+res <- get_rsids_by_PIP_2.0("2015_IBD_EUR", "EUR", 0.25, "UKBB")
+```
+
+
 

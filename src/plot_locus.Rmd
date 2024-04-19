@@ -1,0 +1,82 @@
+---
+title: "analysis04_locus_plots.Rmd"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(locuszoomr) ## enables locuszoom plotting
+library(data.table) ## enables fread for fast import of .tsv.gz file
+library(EnsDb.Hsapiens.v86)
+ library(dplyr)
+library(ggplot2)
+library(patchwork)
+library(stringr)
+```
+
+```{r}
+source("/gpfs/commons/groups/nygcfaculty/lappalainen_singh/finemapping_autoimmune/src/post_finemapping_functions.R")
+res <- get_rsids_by_PIP_2.0("2015_IBD_EUR", "EUR", 0.25, "UKBB")
+```
+
+plotting random locus:
+```{r}
+sumstats_name <- "2015_IBD_EUR"
+window_mb <- 0.25
+LOCUS <- "1:200874229"
+LD_REF <- "UKBB"
+ld_pop <- "EUR"
+
+ss_path <- paste0("/gpfs/commons/groups/nygcfaculty/lappalainen_singh/finemapping_autoimmune/", paste0("output/", sumstats_name, "/", ld_pop, "_",
+                              window_mb, "Mb_window/ss/", sumstats_name, "_ss_",
+                              window_mb, "Mb_locus_", LOCUS, "_matched.z"))
+ss <- fread(ss_path) %>% dplyr::mutate(pval = pnorm((abs(beta)/se), lower.tail=F)*2)
+ld_path = paste0("/gpfs/commons/groups/nygcfaculty/lappalainen_singh/finemapping_autoimmune/",paste0("output/", sumstats_name, "/", ld_pop, "_",
+                              window_mb, "Mb_window/ld/", sumstats_name, "_ss_",
+                              window_mb, "Mb_locus_", LOCUS, "_matched.ld"))
+ld <- fread(ld_path)
+colnames(ld) <- ss$SNP
+lead_SNP <- ss$SNP[ss$chromosome == str_split(LOCUS, ":")[[1]][1] & ss$position == str_split(LOCUS, ":")[[1]][2]]
+ss$r2 <- as.numeric(ld[[lead_SNP]])^2
+
+locus <- locus(data = ss %>% dplyr::select(!SNP), 
+               chrom = "chromosome", 
+               pos = "position", 
+               p = "pval", 
+               ens_db = "EnsDb.Hsapiens.v86",
+               xrange = c(min(ss$position), max(ss$position)),
+               seqname = unique(ss$chromosome), LD = "r2")
+
+locus_zoom <- locus_ggplot(locus, legend_pos = NULL)
+
+
+cex.lab = 1
+cex.axis = 1
+legend.justification <- c(0, 1)
+legend.position <- c(0.01, 0.99)
+finemapping_res_plot <- res %>% 
+  dplyr::filter(locus == LOCUS) %>% 
+  ggplot() + 
+  geom_point(aes(x = bp/1000000, y = prob, color = method)) + 
+  ylim(0,1) +
+  labs(x = "Mb", y= "PIP") +
+  facet_grid(rows = vars(window)) + 
+      theme_classic() +
+      theme(axis.text = element_text(colour = "black", size = 10 * cex.axis),
+            axis.title = element_text(size = 10 * cex.lab),
+            legend.justification = legend.justification,
+            legend.position = legend.position,
+            legend.title.align = 0.5,
+            legend.text.align = 0,
+            legend.key.size = unit(0.9, 'lines'),
+            legend.spacing.y = unit(0, 'lines')) 
+
+locus_zoom + finemapping_res_plot + plot_annotation(title = paste(STUDY, LOCUS, LD_REF, WINDOW_MB))
+
+ggsave(paste0("/gpfs/commons/groups/nygcfaculty/lappalainen_singh/finemapping_autoimmune/analysis/", paste(STUDY, LOCUS, LD_REF, WINDOW_MB, sep = "_"), ".pdf"), width = 10, height = 6)
+```
+
+
