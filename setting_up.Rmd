@@ -9,68 +9,38 @@ knitr::opts_chunk$set(echo = TRUE)
 
 
 ```{r}
+setwd("/gpfs/commons/groups/nygcfaculty/lappalainen_singh/finemapping_autoimmune")
 library(data.table)
 library(dplyr)
 library(ggplot2)
+source("src/finemapping_functions.R")
 ```
 
 ```{r}
-gwasEUR <- fread("../AID_GWAS/SumStats/IBD/natgen_2015_PMID26192919/EUR.IBD.gwas_info03_filtered.assoc")
-gwasMULT <- fread("../AID_GWAS/SumStats/IBD/natgen_2015_PMID26192919/trans_ethnic_Immunochip/IBD_trans_ethnic_association_summ_stats_b37.txt")
+gwasEUR_og <- fread("../AID_GWAS/SumStats/IBD/natgen_2015_PMID26192919/EUR.IBD.gwas_info03_filtered.assoc")
+#gwasMULT <- fread("../AID_GWAS/SumStats/IBD/natgen_2015_PMID26192919/trans_ethnic_Immunochip/IBD_trans_ethnic_association_summ_stats_b37.txt")
 leadSNPs <- fread("../AID_GWAS/SumStats/IBD/natgen_2015_PMID26192919/Lead_SNPS_IBD_NATGEN_2015.csv")
 colnames(leadSNPs) <- c("chr", "og_SNP", "og_SNP_BP37", "pheno", "BF", "top_SNP", "top_SNP_BP37", "P", "R2")
-leadSNPs <- leadSNPs %>% filter(pheno == "IBD") %>% select(top_SNP, top_SNP_BP37, P)
 
-leadSNPs <- left_join(leadSNPs, gwasMULT, by = c("top_SNP" = "SNP"))
 ```
 
 
 ```{r}
 
 #df.leadSNP has columns BP, CHR, locus
-#df.sumstats has columns chromosome, position, allele1, allele2, assuming allele1 is effect allele
+#df.sumstats has columns chromosome, position, allele1, allele2, assuming allele1 is effect allele, beta, se
 leadSNPs.1 <- leadSNPs %>% 
   filter(pheno == "IBD") %>% 
   mutate(locus = paste0(chr, ":", top_SNP_BP37)) %>% 
   select(CHR = chr, BP = top_SNP_BP37, locus)
 
-gwasEUR <- gwasEUR %>%  
+gwasEUR <- gwasEUR_og %>%  
   mutate(beta = log(OR)) %>% 
   select(rsid = SNP, chromosome = CHR, position = BP, allele1 = A1, allele2 = A2, beta, se = SE) 
+write_tsv(gwasEUR, "data/IBD.EUR.assoc")
+```
 
-generate_per_locus_data_and_submit_pipeline <- function(df.leadSNP, df.sumstats, window_mb, sumstats_name, ld_pop){
-  window_bp <- window_mb*1000000
-  df.leadSNP <- df.leadSNP %>%
-    mutate(LOWER = ifelse((BP-window_bp) < 0, 1, BP-window_bp), #if lead snp is too close to chr beginning
-           UPPER = BP+window_bp)
-  
-  dir.create(paste0("output/", sumstats_name))
-  dir.create(paste0("output/", sumstats_name, "/", ld_pop, "_", window_mb, "Mb_window"))
-  dir.create(paste0("output/", sumstats_name, "/", ld_pop, "_", window_mb, "Mb_window/ss"))
-  
-  for (i in 1:nrow(df.leadSNP)) {
-    LOCUS <- df.leadSNP$locus[i]
-    CHR <- df.leadSNP$CHR[i]
-    START <- df.leadSNP$LOWER[i]
-    END <- df.leadSNP$UPPER[i]
-    system(paste("### command to run rest of pipeline by locus"))
-    ss_per_locus <- get_ss_per_locus(df.sumstats %>% 
-                                       filter(chromosome == CHR) %>% 
-                                       arrange(position), 
-                                     LOCUS,
-                                     START, 
-                                     END)
-    
-    ld_per_locus_res <- get_ld_per_locus(ss_per_locus, LOCUS, CHR, START, END)
-    ss_filtered <- ld_per_locus_res[[1]]
-    ld_filtered <- ld_per_locus_res[[2]]
-    
-    run_susie(ss_filtered, ld_filtered, N_tot, N_cases, ld_pop, sumstats_name, window_mb, LOCUS, "UKBB")
-    run_carma(sumstats, ld, sumstats_name, window_mb, locus, ld_pop, LDpanel) #check that functions are correct
-    
-}
-}
-
-
+```{r}
+generate_per_locus_data_and_submit_pipeline(df.leadSNP = leadSNPs.1, "data/IBD.EUR.assoc", "EUR.IBD", 34694, 12924, 0.25, "EUR")
 ```
 
