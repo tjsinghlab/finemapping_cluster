@@ -19,12 +19,11 @@ get_rsids_by_PIP_2.0 <- function(sumstats_name, ld_pop, window_mb, LDpanel){
     glob2rx(paste0("*", LDpanel, "*.txt.gz")))
   
   susie <- susie %>% 
-    rename_with(~ paste0("susie_", .x),starts_with("CS")) %>% 
-    select(rsid, locus, prob = PIP, beta, se, A1 = allele1, A2 = allele2, chr = chromosome, bp = position, CSsusie= CS) %>% 
+    select(rsid, locus, PIP, beta, se, A1 = allele1, A2 = allele2, chr = chromosome, bp = position, CSsusie= CS) %>% 
     mutate(method = "susie") 
   
   carma <- carma %>% 
-    select(rsid, locus, prob = PIP, beta, se, A1 = allele1, A2 = allele2, chr = chromosome, bp = position, outlier, CScarma = CS) %>% 
+    select(rsid, locus, PIP, beta, se, A1 = allele1, A2 = allele2, chr = chromosome, bp = position, outlier, CScarma = CS) %>% 
     mutate(method = "carma")
   
   res <- rbind(susie, carma, fill = T)
