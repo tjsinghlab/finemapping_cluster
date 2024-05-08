@@ -88,11 +88,10 @@ get_ld_per_locus <- function(ss_per_locus, LOCUS, CHR, START, END){
     print("LD mat contains NAs")
     ld_filtered <- as.data.frame(ld_filtered)
     ld_filtered_noNA <- as.data.frame(as.matrix(ld_filtered)[unname(which(!sapply(ld_filtered, anyNA))), unname(which(!sapply(ld_filtered, anyNA)))]) #ugly as hell but seems to work
-    to_remove <- colnames(ld_filtered)[!colnames(ld_filtered) %in% colnames(ld_filtered1)]
+    to_remove <- colnames(ld_filtered)[!colnames(ld_filtered) %in% colnames(ld_filtered_noNA)]
     ss_filtered_noNA <- ss_filtered %>% filter(!SNP %in% to_remove)
     print(dim(ss_filtered_noNA))
     print(dim(ld_filtered_noNA))
-    print(to_remove)
     if(!isTRUE(all.equal(ss_filtered_noNA$SNP, colnames(ld_filtered_noNA)) )){
       stop("Problem! ss rsid do not agree with LD columns")
     }else{
@@ -163,10 +162,10 @@ run_CARMA <- function(sumstat, ld, sumstats_name, ld_pop, window_mb, locus, LDpa
 ## run SuSiE for sumstat, ld pairing, using modified variance as suggested for working with binary traits
 run_susie <- function(sumstats, LDmat, N_tot, N_cases, sumstats_name, ld_pop,  window_mb, locus, LDpanel, coverage = 0.95){
   window_bp <- window_mb*1000000
-  if(length(sumstats$rsid) != nrow(LDmat)){
+  if(length(sumstats$SNP) != nrow(LDmat)){
     print("Problem! SS dimensions do not agree with LD matrix dimensions")
   }
-  colnames(LDmat) <- rownames(LDmat) <- paste(sumstats$rsid,sumstats$allele1, sumstats$allele2, sep = ":")
+  colnames(LDmat) <- rownames(LDmat) <- paste(sumstats$chromosome,sumstats$position,sumstats$allele1, sumstats$allele2, sep = ":")
   
   dir.create(paste0("output/",sumstats_name,"/",ld_pop,"_", 
                     window_mb, "Mb_window/susie"))
