@@ -55,11 +55,22 @@ get_ss_per_locus <- function(path_df_sumstats, CHR, LOCUS, START, END){
 get_ld_per_locus <- function(ss_per_locus, LOCUS, CHR, START, END){
   path_to_LD <- find_LD_block(CHR, START, END)
   print(path_to_LD)
-  bim <- fread(paste0(path_to_LD, ".bim"))
+  bim <- data.frame()
+  ld <- matrix(ncol = 0, nrow = 0)
+  for(file in path_to_LD){
+    BIM <- fread(paste0(file, ".bim"))
+    LD <- fread(paste0(file, ".ld"))
+    bim <- rbind(bim, BIM)
+    ld <- bdiag(ld, as.matrix(LD)) #make sure this is correct
+  }
+  
   colnames(bim) <- c("chr", "rsid", "dk", "pos", "alt", "ref")
   bim$SNP <- paste(bim$chr, bim$pos, bim$alt, bim$ref, sep = ":")
-  ld <- fread(paste0(path_to_LD, ".ld"))
+ 
   colnames(ld) <- rownames(ld) <- bim$SNP
+  
+  ld <- ld[!duplicated(bim$SNP), !duplicated(bim$SNP)]
+  bim <- bim[!duplicated(bim$SNP)]
 
   ss_per_locus$SNP1 <- paste(ss_per_locus$chromosome,  #allele1 = alt, no need to change direction of beta
                              ss_per_locus$position, 
@@ -71,8 +82,8 @@ get_ld_per_locus <- function(ss_per_locus, LOCUS, CHR, START, END){
                              ss_per_locus$allele1, sep = ":")
 
   bim$ss_matched <- bim$SNP %in% c(ss_per_locus$SNP2, ss_per_locus$SNP1)
-  ld_filtered <- as.matrix(ld)[bim$ss_matched, bim$ss_matched]
-  bim_filtered <- bim %>% filter(ss_matched)
+  ld_filtered <- ld[bim$ss_matched, bim$ss_matched]
+  bim_filtered <- bim[bim$ss_matched,]
   ss_filtered <- rbind(ss_per_locus %>% 
                          filter(SNP1 %in% bim_filtered$SNP) %>% 
                          rename(SNP = SNP1) %>% 
@@ -83,10 +94,10 @@ get_ld_per_locus <- function(ss_per_locus, LOCUS, CHR, START, END){
                          rename(SNP = SNP2, allele1 = allele2, allele2 = allele1) %>%  #then we rename alleles
                          select(!c(SNP1)))
   
-  ss_filtered <- inner_join(bim %>% select(SNP), ss_filtered, by = "SNP")
+  ss_filtered <- inner_join(bim_filtered %>% select(SNP), ss_filtered, by = "SNP") 
   if(sum(is.na(ld_filtered)) != 0){
     print("LD mat contains NAs")
-    ld_filtered <- as.data.frame(ld_filtered)
+    ld_filtered <- as.data.frame(as.matrix(ld_filtered))
     ld_filtered_noNA <- as.data.frame(as.matrix(ld_filtered)[unname(which(!sapply(ld_filtered, anyNA))), unname(which(!sapply(ld_filtered, anyNA)))]) #ugly as hell but seems to work
     to_remove <- colnames(ld_filtered)[!colnames(ld_filtered) %in% colnames(ld_filtered_noNA)]
     ss_filtered_noNA <- ss_filtered %>% filter(!SNP %in% to_remove)
@@ -100,7 +111,7 @@ get_ld_per_locus <- function(ss_per_locus, LOCUS, CHR, START, END){
   }else if(sum(ss_filtered$SNP != bim_filtered$SNP) != 0){
     stop("Problem! variants out of order")
   }else{
-    return(list(ss_filtered, as.data.frame(ld_filtered)))
+    return(list(ss_filtered, as.data.frame(as.matrix(ld_filtered))))
   }
 }
 
@@ -108,14 +119,12 @@ get_ld_per_locus <- function(ss_per_locus, LOCUS, CHR, START, END){
 ## determines which LD block locus falls in
 find_LD_block <- function(CHR, START, END){
   approx_blocks <- fread("/gpfs/commons/groups/nygcfaculty/sghatan/UKb_LDmatrices/approx_LD_blocks.txt")
-  if(nrow(approx_blocks %>% filter(chr == CHR, start < START, stop > END)) == 1){
-    LD_start <- approx_blocks %>% filter(chr == CHR, start < START, stop > END) %>% pull(start)
-    LD_stop <- approx_blocks %>% filter(chr == CHR, start < START, stop > END) %>% pull(stop)
-    filepath <- paste0("/gpfs/commons/groups/nygcfaculty/sghatan/UKb_LDmatrices/chr", CHR, "/", LD_start, ".", LD_stop, "/", LD_start, ".", LD_stop)
-    return(filepath)
-  }else{
-    stop("Problem! locus overlaps multiple LD blocks!")
-  }
+  num_blocks = nrow(approx_blocks %>% filter(chr == CHR,  start < END, stop > START))
+  print(paste0("Number of blocks: ", num_blocks))
+  LD_start <- approx_blocks %>% filter(chr == CHR, start < END, stop > START) %>% pull(start)
+  LD_stop <- approx_blocks %>% filter(chr == CHR, start < END, stop > START) %>% pull(stop)
+  filepath <- paste0("/gpfs/commons/groups/nygcfaculty/sghatan/UKb_LDmatrices/chr", CHR, "/", LD_start, ".", LD_stop, "/", LD_start, ".", LD_stop)
+  return(filepath)
 }
 
 ## run CARMA for sumstat, ld pairing, does not need sample size info

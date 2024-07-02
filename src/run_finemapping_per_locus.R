@@ -21,6 +21,7 @@ library(readr)
 library(CARMA)
 library(data.table)
 library(dplyr)
+library(Matrix)
 
 ss_per_locus <- get_ss_per_locus(path_df_sumstats, 
                                  CHR,
