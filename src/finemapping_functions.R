@@ -38,8 +38,8 @@ generate_per_locus_data_and_submit_pipeline <- function(df.leadSNP, path_df_sums
 }
 
 ## returns sumstat limited to region around lead SNP
-get_ss_per_locus <- function(path_df_sumstats, CHR, LOCUS, START, END){
-  df.sumstats <- fread(path_df_sumstats)
+get_ss_per_locus <- function(df.sumstats, LOCUS, CHR,  START, END){
+  #df.sumstats <- fread(path_df_sumstats)
   df_chrom <- df.sumstats %>% 
     filter(chromosome == CHR) %>% 
     arrange(position)
@@ -48,6 +48,20 @@ get_ss_per_locus <- function(path_df_sumstats, CHR, LOCUS, START, END){
   df_chrom[ROW_START:ROW_END,"locus"] = LOCUS
   return(df_chrom[ROW_START:ROW_END,])
 }
+
+
+save_ss_per_locus <- function(sumstats_name, df.sumstats, LOCUS, CHR, START, END, window_mb){
+  ss <- get_ss_per_locus(df.sumstats, LOCUS, CHR,  START, END)
+  ss_dir <- paste0("output/", sumstats_name, "/", ld_pop, "_", window_mb, "Mb/ss/")
+  ss_path <- paste0(ss_dir, paste(sumstats_name, paste0(window_mb, "Mb"), LOCUS, sep = "_"), ".txt")
+  write.table(ss, ss_path, quote = F, sep = "\t", row.names = F)
+  
+}
+
+
+
+
+
 
 ## returns LD matrix for each locus, and corresponding sum stats, 
 ## modified so that beta corresponds to alt SNP from bim file 
