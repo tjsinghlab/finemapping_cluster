@@ -4,7 +4,6 @@ args = commandArgs(trailingOnly = TRUE)
 setwd("/gpfs/commons/groups/nygcfaculty/lappalainen_singh/finemapping_autoimmune")
 source("src/finemapping_functions.R")
 
-print(args)
 sumstats_name <- as.character(args[1])
 path_df_sumstats <- as.character(args[2])
 ld_pop <- as.character(args[3])
