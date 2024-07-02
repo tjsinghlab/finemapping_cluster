@@ -2,6 +2,8 @@ import hail as hl
 from hail.linalg import BlockMatrix
 import pandas as pd
 import subprocess
+import argparse
+import os
 
 def get_UKBB_LDmat_per_locus(ss_name, window_mb, locus):
 #read in UKBB data
@@ -11,14 +13,14 @@ def get_UKBB_LDmat_per_locus(ss_name, window_mb, locus):
     
     #read in ss file per locus and create key by locus alleles
     dir = 'gs://nygc-comp-d-95c4-tf/finemapping_analysis/autoimmune/data/' + ss_name + '/'
-    snps_file = ss_dir + 'ss/' + ss_name + '_' + window_mb + 'Mb_' + locus + '.txt'
-    snps = hl.import_table(snps_file, delimiter = " ").key_by('chromosome', 'position')
+    snps_file = dir + 'ss/' + ss_name + '_' + window_mb + 'Mb_' + locus + '.txt'
+    snps = hl.import_table(snps_file, delimiter = "\t").key_by('chromosome', 'position')
     snps = snps.annotate(variant = snps.chromosome + ":" + snps.position + ":" + snps.allele1 + ":" + snps.allele2)
     snps = snps.transmute(**hl.parse_variant(snps.variant)).key_by('locus', 'alleles')
 
     #Join snps to ht index
     ht_idx = ht_idx.join(snps, 'inner')
-    ht_idx.export(dir + 'ss/' +  ss_name + '_' + window_mb + 'Mb_' + locus +'_matched.tsv.bgz')
+    ht_idx.export(dir + 'LD/' +  ss_name + '_' + window_mb + 'Mb_' + locus +'_matched.tsv.bgz')
 
     idx = ht_idx.idx.collect()
 
@@ -36,10 +38,10 @@ def get_UKBB_LDmat_per_locus(ss_name, window_mb, locus):
     )
 
 def get_UKBB_LDmat(ss_name, window_mb):
-  locus_file =  hl.import_table('gs://nygc-comp-d-95c4-tf/finemapping_analysis/data/' + ss_name + '_leadSNPs.tsv', delimiter = "\t")
+  locus_file =  hl.import_table('gs://nygc-comp-d-95c4-tf/finemapping_analysis/autoimmune/data/' + ss_name + '/' + ss_name + '_leadSNPs.tsv', delimiter = "\t")
   locus_file_pd = locus_file.to_pandas()
-  for locus in locus_file_pd['locus']:
-    subset_UKBB_LDmat(ss_name, window_mb, locus)
+  for locus in locus_file_pd['locus'][119:137]:
+    get_UKBB_LDmat_per_locus(ss_name, window_mb, locus)
     
     
 def main():
@@ -51,7 +53,6 @@ def main():
   
   get_UKBB_LDmat(args.ss_name, args.window_mb)
   
-  #gsutil -m cp gs://nygc-comp-d-95c4-tf/finemapping_analysis/data/LDmatrices_scz/UKBB_LDmat_2022_scz_asn_ss_0.5Mb*bgz .
     
 if __name__ == '__main__':
     main()
