@@ -16,7 +16,7 @@ path_df_sumstats <- as.character(args[3])
 ld_pop <- as.character(args[4])
 window_mb <- as.numeric(args[5])
 
-df.leadSNP <- fread(path_leadSNP)
+df.leadSNP <- fread(path_leadSNP, colClasses = c("numeric","numeric", "character"))
 
 window_bp <- window_mb*1000000
 df.leadSNP <- df.leadSNP %>%
@@ -28,9 +28,10 @@ dir.create(paste0("output/", sumstats_name, "/", ld_pop, "_", window_mb, "Mb"))
 dir.create(paste0("output/", sumstats_name, "/", ld_pop, "_", window_mb, "Mb/ss"))
 dir.create(paste0("output/", sumstats_name, "/", ld_pop, "_", window_mb, "Mb/ld"))
 
-ss <- fread(path_df_sumstats)
+ss <- fread(path_df_sumstats, na.strings=c(""," ","NA"))
+
 for (i in 1:nrow(df.leadSNP)) {
-  LOCUS <- df.leadSNP$locus[i]
+  LOCUS <- as.character(df.leadSNP$locus[i])
   CHR <- df.leadSNP$CHR[i]
   START <- df.leadSNP$LOWER[i]
   END <- df.leadSNP$UPPER[i]
