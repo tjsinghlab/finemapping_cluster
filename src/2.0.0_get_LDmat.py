@@ -9,19 +9,19 @@ def get_UKBB_LDmat_per_locus(ss_name, window_mb, locus):
 #read in UKBB data
     ht_idx = hl.read_table('gs://nygc-bd2disc2-ukbb-ldmatrix/UKBB.EUR.ldadj.variant.ht').key_by('locus', 'alleles')
     bm = BlockMatrix.read('gs://nygc-bd2disc2-ukbb-ldmatrix/UKBB.EUR.ldadj.bm')
-    
-    
+    ht_idx.show(10) 
     #read in ss file per locus and create key by locus alleles
     dir = 'gs://nygc-comp-d-95c4-tf/finemapping_analysis/autoimmune/data/' + ss_name + '/'
     snps_file = dir + 'ss/' + ss_name + '_' + window_mb + 'Mb_' + locus + '.txt'
     snps = hl.import_table(snps_file, delimiter = "\t").key_by('chromosome', 'position')
-    snps = snps.annotate(variant = snps.chromosome + ":" + snps.position + ":" + snps.allele1 + ":" + snps.allele2)
+    snps = snps.annotate(variant = snps.chromosome + ":" + snps.position + ":" + snps.allele2 + ":" + snps.allele1)
     snps = snps.transmute(**hl.parse_variant(snps.variant)).key_by('locus', 'alleles')
+    snps.show(10) 
 
     #Join snps to ht index
     ht_idx = ht_idx.join(snps, 'inner')
-    ht_idx.export(dir + 'LD/' +  ss_name + '_' + window_mb + 'Mb_' + locus +'_matched.tsv.bgz')
-
+    
+    ht_idx.export(dir + 'LD/' +  ss_name + '_' + window_mb + 'Mb_' + locus +'_matched.tsv')
     idx = ht_idx.idx.collect()
 
     #filter variants
@@ -40,7 +40,7 @@ def get_UKBB_LDmat_per_locus(ss_name, window_mb, locus):
 def get_UKBB_LDmat(ss_name, window_mb):
   locus_file =  hl.import_table('gs://nygc-comp-d-95c4-tf/finemapping_analysis/autoimmune/data/' + ss_name + '/' + ss_name + '_leadSNPs.tsv', delimiter = "\t")
   locus_file_pd = locus_file.to_pandas()
-  for locus in locus_file_pd['locus'][119:137]:
+  for locus in locus_file_pd['locus']:
     get_UKBB_LDmat_per_locus(ss_name, window_mb, locus)
     
     
@@ -51,6 +51,7 @@ def main():
   parser.add_argument('--window_mb', action="store", dest='window_mb')
   args = parser.parse_args()
   
+   
   get_UKBB_LDmat(args.ss_name, args.window_mb)
   
     
