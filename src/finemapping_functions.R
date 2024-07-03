@@ -45,16 +45,16 @@ get_ss_per_locus <- function(df.sumstats, LOCUS, CHR,  START, END){
     arrange(position)
   ROW_START = which(df_chrom[,"position"]>START)[1]
   ROW_END = which(df_chrom[,"position"]<END)[length(which(df_chrom[,"position"]<END))]
-  df_chrom[ROW_START:ROW_END,"locus"] = LOCUS
+  df_chrom[ROW_START:ROW_END,"locus"] = as.character(LOCUS)
   return(df_chrom[ROW_START:ROW_END,])
 }
 
 
 save_ss_per_locus <- function(sumstats_name, df.sumstats, LOCUS, CHR, START, END, window_mb){
-  ss <- get_ss_per_locus(df.sumstats, LOCUS, CHR,  START, END)
+  ss <- get_ss_per_locus(df.sumstats, as.character(LOCUS), CHR,  START, END)
   ss_dir <- paste0("output/", sumstats_name, "/", ld_pop, "_", window_mb, "Mb/ss/")
-  ss_path <- paste0(ss_dir, paste(sumstats_name, paste0(window_mb, "Mb"), LOCUS, sep = "_"), ".txt")
-  write.table(ss, ss_path, quote = F, sep = "\t", row.names = F)
+  ss_path <- paste0(ss_dir, paste(sumstats_name, paste0(window_mb, "Mb"), as.character(LOCUS), sep = "_"), ".txt")
+  write_delim(ss, ss_path, delim = "\t")
   
 }
 
@@ -154,11 +154,11 @@ run_CARMA <- function(sumstat, ld, sumstats_name, ld_pop, window_mb, locus, LDpa
   CARMA.results<-CARMA(z.list, ld.list, lambda.list=lambda.list, outlier.switch=TRUE, rho.index = 0.95)
   
   dir.create(paste0("output/",sumstats_name,"/", ld_pop, "_", 
-                    window_mb, "Mb_window/CARMA/"))
+                    window_mb, "Mb/CARMA/"))
   
   saveRDS(CARMA.results, file = paste0("output/",sumstats_name,"/", ld_pop, "_", 
-                                       window_mb, "Mb_window/CARMA/", sumstats_name, "_", LDpanel, "_", 
-                                       window_mb, "Mb_locus_",locus,".rds"))
+                                       window_mb, "Mb/CARMA/", sumstats_name, "_", LDpanel, "_", 
+                                       window_mb, "Mb_",locus,".rds"))
   print("Outliers")
   print(sumstat$SNP[c(CARMA.results[[1]]$Outliers$Index)])
   
@@ -176,8 +176,8 @@ run_CARMA <- function(sumstat, ld, sumstats_name, ld_pop, window_mb, locus, LDpa
   ###### write the GWAS summary statistics with PIP and CS
   fwrite(x = sumstat.result,
          file = paste0("output/",sumstats_name,"/", ld_pop, "_", 
-                       window_mb, "Mb_window/CARMA/", sumstats_name, "_", LDpanel, "_", 
-                       window_mb, "Mb_locus_",locus,".txt.gz"), 
+                       window_mb, "Mb/CARMA/", sumstats_name, "_", LDpanel, "_", 
+                       window_mb, "Mb_",locus,".txt.gz"), 
          sep = "\t", quote = F, na = "NA", row.names = F, col.names = T, compress = "gzip")
   
 }
@@ -191,14 +191,14 @@ run_susie <- function(sumstats, LDmat, N_tot, N_cases, sumstats_name, ld_pop,  w
   colnames(LDmat) <- rownames(LDmat) <- paste(sumstats$chromosome,sumstats$position,sumstats$allele1, sumstats$allele2, sep = ":")
   
   dir.create(paste0("output/",sumstats_name,"/",ld_pop,"_", 
-                    window_mb, "Mb_window/susie"))
+                    window_mb, "Mb/susie"))
   phi <- N_cases/N_tot
   
   susie_output <- susie_rss(R = as.matrix(LDmat), n = N_tot, vary_y = 1/(phi*(1-phi)), bhat = sumstats$beta, shat = sumstats$se)
   
   saveRDS(susie_output, file = paste0("output/",sumstats_name,"/", ld_pop, "_", 
-                                       window_mb, "Mb_window/susie/", sumstats_name, "_", LDpanel, "_", 
-                                       window_mb, "Mb_locus_",locus,".rds"))
+                                       window_mb, "Mb/susie/", sumstats_name, "_", LDpanel, "_", 
+                                       window_mb, "Mb_",locus,".rds"))
   
   if(susie_output$converged == TRUE){
     print("converged!")
@@ -217,7 +217,39 @@ run_susie <- function(sumstats, LDmat, N_tot, N_cases, sumstats_name, ld_pop,  w
     }
     ## write finemapped sumstats file
     write_tsv(sumstats, paste0("output/",sumstats_name,"/",ld_pop,"_", 
-                               window_mb, "Mb_window/susie/", LDpanel,"_locus", locus, "_cov", coverage,"_adjustedvar.tsv"))
+                               window_mb, "Mb/susie/", LDpanel,"_", locus, "_cov", coverage,"_adjustedvar.tsv"))
   }
 }
 
+
+bring_in_UKBB_data <- function(sumstats_name, ld_pop, window_mb, locus_dot){
+  #bring in ss inner join from hail
+
+  ss_matched <- fread(cmd = paste0("zcat output/", sumstats_name, "/", ld_pop, "_", window_mb,
+                                  "Mb/ld/", sumstats_name, "_",
+                                  window_mb,"Mb_", locus_dot,"_matched.tsv.bgz"), header = T)
+  
+  ss_matched <- ss_matched %>% separate(alleles, into = c("Hail_1", "Hail_2"), sep = ",") %>%
+    mutate(Hail_1 = str_replace_all(Hail_1, regex("\\W+"), ""), 
+           Hail_2 = str_replace_all(Hail_2, regex("\\W+"), "")) 
+  
+  ss_matched <- ss_matched %>% mutate(beta1 = ifelse(Hail_2 == allele1, beta, 
+                                                     ifelse(Hail_2 == allele2, -1*beta, NA)))
+  #check that all are well matched
+  sum(is.na(ss_matched$beta1))
+  ss_matched <- ss_matched %>% mutate(beta = beta1) %>% select(!beta1)
+  
+  #now all betas are in terms of Hail_2 allele
+  #write new ss:
+  ss_matched <- ss_matched %>% 
+                select(rsid = rsid_1, chromosome, position, allele1 = Hail_2, allele2 = Hail_1, beta, se, locus)
+
+  
+  LD <- read.table(paste0("output/", sumstats_name, "/", ld_pop, "_", window_mb,
+                          "Mb/ld/UKBB_LDmat_",
+                          sumstats_name, "_", window_mb,"Mb_", locus_dot,".bgz"))
+  LD <- as.matrix(LD)
+  #make full matrix
+  LD[lower.tri(LD)]  <- t(LD)[lower.tri(LD)]
+  return(list(ss_matched, LD))
+}
