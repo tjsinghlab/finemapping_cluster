@@ -6,6 +6,7 @@
 cd /gpfs/commons/groups/nygcfaculty/lappalainen_singh/finemapping_autoimmune
 module purge
 module load R/4.2.2 
+module load gcloud
 
 #path_leadSNP <- as.character(args[1]) #locus needs to be saved as "chr.pos"
 #sumstats_name <- as.character(args[2])
@@ -13,7 +14,11 @@ module load R/4.2.2
 #ld_pop <- as.character(args[4])
 #window_mb <- as.numeric(args[5])
                  
-Rscript src/1.0.0_get_locus_ss.R $1 $2 $3 $4 ${5} 
+Rscript src/1.0.0_prep_locus_ss.R $1 $2 $3 $4 ${5} 
+
+sumstats_name=$2
+ld_pop=$4
+window_mb=$5
 
 proj_dir="/gpfs/commons/groups/nygcfaculty/lappalainen_singh/finemapping_autoimmune"
 ss_path="${proj_dir}/output/${sumstats_name}/${ld_pop}_${window_mb}Mb/ss/*.txt"

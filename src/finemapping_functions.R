@@ -185,7 +185,7 @@ run_CARMA <- function(sumstat, ld, sumstats_name, ld_pop, window_mb, locus, LDpa
 ## run SuSiE for sumstat, ld pairing, using modified variance as suggested for working with binary traits
 run_susie <- function(sumstats, LDmat, N_tot, N_cases, sumstats_name, ld_pop,  window_mb, locus, LDpanel, coverage = 0.95){
   window_bp <- window_mb*1000000
-  if(length(sumstats$SNP) != nrow(LDmat)){
+  if(length(sumstats$rsid) != nrow(LDmat)){
     print("Problem! SS dimensions do not agree with LD matrix dimensions")
   }
   colnames(LDmat) <- rownames(LDmat) <- paste(sumstats$chromosome,sumstats$position,sumstats$allele1, sumstats$allele2, sep = ":")
@@ -225,9 +225,9 @@ run_susie <- function(sumstats, LDmat, N_tot, N_cases, sumstats_name, ld_pop,  w
 bring_in_UKBB_data <- function(sumstats_name, ld_pop, window_mb, locus_dot){
   #bring in ss inner join from hail
 
-  ss_matched <- fread(cmd = paste0("zcat output/", sumstats_name, "/", ld_pop, "_", window_mb,
+  ss_matched <- fread(paste0("output/", sumstats_name, "/", ld_pop, "_", window_mb,
                                   "Mb/ld/", sumstats_name, "_",
-                                  window_mb,"Mb_", locus_dot,"_matched.tsv.bgz"), header = T)
+                                  window_mb,"Mb_", locus_dot,"_matched.tsv"), header = T)
   
   ss_matched <- ss_matched %>% separate(alleles, into = c("Hail_1", "Hail_2"), sep = ",") %>%
     mutate(Hail_1 = str_replace_all(Hail_1, regex("\\W+"), ""), 
@@ -242,7 +242,7 @@ bring_in_UKBB_data <- function(sumstats_name, ld_pop, window_mb, locus_dot){
   #now all betas are in terms of Hail_2 allele
   #write new ss:
   ss_matched <- ss_matched %>% 
-                select(rsid = rsid_1, chromosome, position, allele1 = Hail_2, allele2 = Hail_1, beta, se, locus)
+                select(rsid, chromosome, position, allele1 = Hail_2, allele2 = Hail_1, beta, se, locus)
 
   
   LD <- read.table(paste0("output/", sumstats_name, "/", ld_pop, "_", window_mb,
