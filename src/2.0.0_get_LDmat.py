@@ -9,19 +9,20 @@ def get_UKBB_LDmat_per_locus(ss_name, window_mb, locus):
 #read in UKBB data
     ht_idx = hl.read_table('gs://nygc-bd2disc2-ukbb-ldmatrix/UKBB.EUR.ldadj.variant.ht').key_by('locus', 'alleles')
     bm = BlockMatrix.read('gs://nygc-bd2disc2-ukbb-ldmatrix/UKBB.EUR.ldadj.bm')
-    ht_idx.show(10) 
     #read in ss file per locus and create key by locus alleles
     dir = 'gs://nygc-comp-d-95c4-tf/finemapping_analysis/autoimmune/data/' + ss_name + '/'
     snps_file = dir + 'ss/' + ss_name + '_' + window_mb + 'Mb_' + locus + '.txt'
     snps = hl.import_table(snps_file, delimiter = "\t").key_by('chromosome', 'position')
-    snps = snps.annotate(variant = snps.chromosome + ":" + snps.position + ":" + snps.allele2 + ":" + snps.allele1)
-    snps = snps.transmute(**hl.parse_variant(snps.variant)).key_by('locus', 'alleles')
-    snps.show(10) 
+    snps1 = snps.annotate(variant = snps.chromosome + ":" + snps.position + ":" + snps.allele2 + ":" + snps.allele1)
+    snps2 = snps.annotate(variant = snps.chromosome + ":" + snps.position + ":" + snps.allele1 + ":" + snps.allele2)
+    snps1 = snps1.transmute(**hl.parse_variant(snps1.variant)).key_by('locus', 'alleles')
+    snps2 = snps2.transmute(**hl.parse_variant(snps2.variant)).key_by('locus', 'alleles')
 
     #Join snps to ht index
-    ht_idx = ht_idx.join(snps, 'inner')
-    
-    ht_idx.export(dir + 'LD/' +  ss_name + '_' + window_mb + 'Mb_' + locus +'_matched.tsv')
+    ht_idx1 = ht_idx.join(snps1, 'inner')
+    ht_idx2 = ht_idx.join(snps2, 'inner')
+    ht_idx = ht_idx1.union(ht_idx2)
+    ht_idx.export(dir + 'LD/' +  ss_name + '_' + window_mb + 'Mb_' + locus +'_matched.tsv.bgz')
     idx = ht_idx.idx.collect()
 
     #filter variants
@@ -30,7 +31,6 @@ def get_UKBB_LDmat_per_locus(ss_name, window_mb, locus):
     #write new block matrix
     bm_path = dir + 'LD/UKBB_LDmat_' + ss_name + '_' + window_mb + 'Mb_' + locus  
     bm.write(bm_path + '.bm', force_row_major=True)
-
     BlockMatrix.export(
         bm_path + '.bm',
         bm_path + '.bgz',
