@@ -225,9 +225,9 @@ run_susie <- function(sumstats, LDmat, N_tot, N_cases, sumstats_name, ld_pop,  w
 bring_in_UKBB_data <- function(sumstats_name, ld_pop, window_mb, locus_dot){
   #bring in ss inner join from hail
 
-  ss_matched <- fread(paste0("output/", sumstats_name, "/", ld_pop, "_", window_mb,
+  ss_matched <- fread(cmd = paste0("zcat output/", sumstats_name, "/", ld_pop, "_", window_mb,
                                   "Mb/ld/", sumstats_name, "_",
-                                  window_mb,"Mb_", locus_dot,"_matched.tsv"), header = T)
+                                  window_mb,"Mb_", locus_dot,"_matched.tsv.bgz"), header = T)
   
   ss_matched <- ss_matched %>% separate(alleles, into = c("Hail_1", "Hail_2"), sep = ",") %>%
     mutate(Hail_1 = str_replace_all(Hail_1, regex("\\W+"), ""), 

@@ -9,12 +9,11 @@ module purge
 module load R/4.2.2 
 
 sumstats_name=$1
-path_df_sumstats=$2
-ld_pop=$3
-locus=$4
-N_tot=$5
-N_cases=$6
-window_mb=$7
+ld_pop=$2
+locus=$3
+N_tot=$4
+N_cases=$5
+window_mb=$6
 
-Rscript src/3.1.0_run_FM_per_locus.sh $1 $2 $3 $4 $5 $6 ${7} 
+Rscript src/3.1.1_run_FM_per_locus.R $1 $2 $3 $4 $5 ${6}
 
