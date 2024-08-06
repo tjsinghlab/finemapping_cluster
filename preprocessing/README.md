@@ -1,11 +1,21 @@
 # Fine-Mapping Preprocessing
 
-**major caveat**: We cannot be certain from the columns alone which allele is the effect allele if it is not explicitly stated. For these cases, consult the README from the study or the paper itself. Additionally, this fails when chr & position are omitted. In such cases, rsIDs need to be mapped manually.
+## Major caveat
 
-This package has three main methods:
+tl;dr it doesn't always work and when it does, always check that the columns mapped correctly. **loadmap_sumstats_table** creates a log file with stated mappings, which should be verified by human inspection.
+
+We cannot be certain from the columns alone which allele is the effect allele if it is not explicitly stated. For these cases, consult the README from the study or the paper itself. 
+
+This preprocessing fails when chr & position are omitted. In such cases, rsIDs need to be mapped manually. 
+
+This preprocessing fails if the PI didn't include enough of the necessary columns.
+
+## Functionality
+
 1. **ask_sumstats_col_order**: Compares the given file column names to the expected fields. This method is used for standardizing summary stat files by mapping column name and ordering to an expected format.
     - Determines which columns from sumstats file are needed for the finemapping pipeline using a 2-shot prompt.
     - Returns those column names in the order expected by the pipeline.
+    - See caveat above.
 
 2. **loadmap_sumstats_table**: Loads and maps the summary statistics file to the expected column order for a finemapping pipeline.
     - Loads in sumstats dataframe
