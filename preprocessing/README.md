@@ -81,7 +81,7 @@ for path in my_input_files:
 output_directory = 'path/to/my/output/dir'
 ```
 
-## Instantiate FiMTools class
+## Instantiate Preprocess class
 
 ```python
 from preprocessing import Preprocess
@@ -99,7 +99,7 @@ ft.ancestry = 'EUR' # default value is 'EUR' but can be statically
 # the column matching the ancestry variable set by user.
 ```
 
-## Iterate over each file and run FiMTools
+## Iterate over each file and run preprocessing
 
 ```python
 for path in my_input_files:
