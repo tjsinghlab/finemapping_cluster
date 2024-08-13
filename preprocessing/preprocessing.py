@@ -279,13 +279,24 @@ class Preprocess:
                 for s, e in zip(sumstats_mapped_columns, self.desired_columns) if s != 'NA'
             }
             # print(old_new_column_mappings)
-
+            
+            # rename
             chunk.rename(
                 columns=old_new_column_mappings, 
                 inplace=True
             )
 
-            chunk.to_csv(save_sumstats_as, mode=mode, header=header, index=False, sep='\t') # sep=',' if ext1 == '.csv' else '\t', compression='gzip' if ext2 else None
+            # filter
+            cols = [c for c in chunk.columns if c in self.desired_columns]
+            print(cols)
+
+            chunk.dropna(subset=cols, inplace=True)
+            chunk_filt = chunk[(chunk['beta'] < np.inf) & (chunk['beta'] > 0)]
+
+            # rearrange
+            chunk_filt = chunk_filt[cols]
+
+            chunk_filt.to_csv(save_sumstats_as, mode=mode, header=header, index=False, sep='\t') # sep=',' if ext1 == '.csv' else '\t', compression='gzip' if ext2 else None
             mode = 'a'
             header = False
             if v:
