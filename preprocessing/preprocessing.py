@@ -375,9 +375,7 @@ class Preprocess:
 
         ## Save the results to a TSV file
         save_leadsnp_as = os.path.join(self.out_dir, self.filename) + f'_preprocessed_leadSNPs.tsv'
-        leadsnp_df.to_csv(save_leadsnp_as, mode=mode, header=header, index=False, sep='\t')
-        mode = 'a'
-        header = False
+        leadsnp_df.to_csv(save_leadsnp_as, index=False, sep='\t')
 
         if v:
             print(leadsnp_df.head())
