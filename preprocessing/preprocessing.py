@@ -378,8 +378,9 @@ class Preprocess:
         mode = 'w'
         header = True
 
-        print(input_cols)
-        print(sumstats_mapped_columns)
+        if v:
+            print(input_cols)
+            print(sumstats_mapped_columns)
 
         for chunk in pd.read_table(
                 sorted_input_file,
@@ -389,27 +390,32 @@ class Preprocess:
                 chunksize=Preprocess.CHUNK_SIZE
             ):
             # print(f'loaded in {df.shape[0]} SNPs')
-            print('='*15)
-            print(f'Processing chunk of {chunk.shape[0]} SNPs')
-            print('before mapping:', list(chunk.columns))
+            if v:
+                print('='*15)
+                print(f'Processing chunk of {chunk.shape[0]} SNPs')
+                print('before mapping:', list(chunk.columns))
 
             # rename columns to format desired by pipeline
             chunk = self.remap_dataframe(chunk, old_new_column_mappings, cols_in_order)
-            print('after mapping:', list(chunk.columns))
+            if v:
+                print('after mapping:', list(chunk.columns))
 
             # filter
             chunk[Cols.allele1] = chunk[Cols.allele1].apply(lambda s : s.upper() if len(s) == 1 else np.nan)
             chunk[Cols.allele2] = chunk[Cols.allele2].apply(lambda s : s.upper() if len(s) == 1 else np.nan)
             chunk.dropna(subset=cols_in_order, inplace=True)
-            print(f'Filtered chunk to {chunk.shape[0]} SNPs (drop SNPs with NA alleles -> alleles of len > 1 set to NA)')
+            if v:
+                print(f'Filtered chunk to {chunk.shape[0]} SNPs (drop SNPs with NA alleles -> alleles of len > 1 set to NA)')
 
             chunk.sort_values(by=Cols.pval, ascending=True, inplace=True)
             chunk.drop_duplicates(subset=[Cols.chromosome, Cols.position], keep='first', inplace=True)
             chunk.sort_values(by=[Cols.chromosome, Cols.position], inplace=True)
-            print(f'Filtered chunk to {chunk.shape[0]} SNPs (drop duplicate SNPs -> keep SNP with lowest P-value)')
+            if v:
+                print(f'Filtered chunk to {chunk.shape[0]} SNPs (drop duplicate SNPs -> keep SNP with lowest P-value)')
 
             chunk_filt = chunk[(abs(chunk[Cols.beta]) < np.inf) & (abs(chunk[Cols.beta]) > 0)]
-            print(f'Filtered chunk to {chunk_filt.shape[0]} SNPs (drop irregular betas -> keep SNPs with abs(beta) > 0 and abs(beta)  inf)')
+            if v:
+                print(f'Filtered chunk to {chunk_filt.shape[0]} SNPs (drop irregular betas -> keep SNPs with abs(beta) > 0 and abs(beta)  inf)')
             # thrown_away = chunk[~ ((abs(chunk[Cols.beta]) < np.inf) & (abs(chunk[Cols.beta]) > 0))]
             # print(set(list(thrown_away.beta)))
 
