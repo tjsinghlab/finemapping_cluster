@@ -30,13 +30,14 @@ def main():
         # run loadmap_sumstats_table
         res = ft.loadmap_sumstats_table(
             path,
-            verbose=False # set to True if you want it to print what it's doing
-        )
-        # returns 1 upon success
+            verbose=True # set to True if you want it to print what it's doing
+        ) # returns 0 upon success
 
+        if res != 0:
+            continue
+        
         # create leadsnp table if GPT was able to detect, map, and rearrange columns
-        if res == 1:
-            ft.create_leadsnp_table(verbose=False)
+        ft.create_leadsnp_table(verbose=True)
 
 
 if __name__ == '__main__':

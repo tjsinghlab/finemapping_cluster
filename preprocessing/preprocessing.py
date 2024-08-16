@@ -278,7 +278,7 @@ class Preprocess:
                         If True, print verbose output (default is False).
 
         Returns:
-            None, however sumstats_df is saved as self.sumstats_df
+            int -> zero on success, != 0 on failure
 
         """
         self.dataset_path = dataset_path
@@ -328,7 +328,7 @@ class Preprocess:
         dm_keys = Preprocess.DELIM_MAPPINGS.keys()
         if ext1 not in dm_keys and ext1 != '.gz':
             print(f"Only supports {dm_keys} (+ .gz)")
-            return 0
+            return 1
 
         # ChatGPT integration
         ## Determine column names in sumstats file
@@ -354,7 +354,7 @@ class Preprocess:
         ## Don't process file if there are NAs
         if ct != 0:
             print("GPT couldn't make out all the columns.")
-            return 0
+            return 2
     
         if v:
             print()
@@ -364,7 +364,7 @@ class Preprocess:
             sorted_input_file = self.sort_input_file(sumstats_mapped_columns)
         except:
             print('Failed to sort input file.')
-            return 0
+            return 3
 
         old_new_column_mappings = {
             s: e 
@@ -433,7 +433,7 @@ class Preprocess:
             print(f'Saved reformatted sumstats file to: {filename}_preprocessed.tsv')
             print()
 
-        return 1
+        return 0
 
 
     def create_leadsnp_table(self, **kwargs) -> pd.DataFrame:
