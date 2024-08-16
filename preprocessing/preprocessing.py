@@ -2,17 +2,27 @@ import os, pandas as pd
 import numpy as np
 from openai import OpenAI
 
+class Cols:
+    chromosome = 'chromosome'
+    position = 'position'
+    allele1 = 'allele1'
+    allele2 = 'allele2'
+    beta = 'beta'
+    se = 'se'
+    pval = 'pval'
+    odds_ratio = 'or'
+
 class Preprocess:
 
     DEFAULT_SUMSTATS_COLS = {
-        'chromosome': 'str', 
-        'position'  : 'int32', 
-        'allele1'   : 'str', 
-        'allele2'   : 'str', 
-        'beta'      : 'float64', 
-        'se'        : 'float64',
-        'pval'      : 'float64',
-        'or'        : 'float64'
+        Cols.chromosome : 'str', 
+        Cols.position   : 'int32', 
+        Cols.allele1    : 'str', 
+        Cols.allele2    : 'str', 
+        Cols.beta       : 'float64', 
+        Cols.se         : 'float64',
+        Cols.pval       : 'float64',
+        Cols.odds_ratio : 'float64'
     }
 
     DELIM_MAPPINGS = {
@@ -22,6 +32,7 @@ class Preprocess:
         '.tbl': '\t'
     }
 
+    DEFAULT_ANCESTRY = 'EUR'
     DEFAULT_SIG_THRESHOLD = 5e-8
     DEFAULT_WINDOW = 5e5
     CHUNK_SIZE = 2e6
@@ -58,10 +69,11 @@ class Preprocess:
         self.desired_columns = list(self.desired_columns_dict.keys())
         self.significance_threshold = kwargs['significance_threshold'] \
                                         if 'significance_threshold' in kwargs \
-                                        else None
+                                        else Preprocess.DEFAULT_SIG_THRESHOLD
         self.ancestry : str = kwargs['ancestry'] \
                                         if 'ancestry' in kwargs \
-                                        else 'EUR'
+                                        else Preprocess.DEFAULT_ANCESTRY
+
 
     def ask_sumstats_col_order(self, actual_columns : list, **kwargs) -> list:
         """
@@ -176,6 +188,7 @@ class Preprocess:
             None, however sumstats_df is saved as self.sumstats_df
 
         """
+        self.dataset_path = dataset_path
         v = True if ('verbose' in kwargs and kwargs['verbose']) else False
 
         ## Get the base filename
@@ -212,6 +225,9 @@ class Preprocess:
             # print(ext0, ext1, ext2, ext_full)
             print()
 
+        self.ext1 = ext1
+        self.ext2 = ext2
+        self.ext_full = ext_full
         self.filename = filename
 
         dm_keys = Preprocess.DELIM_MAPPINGS.keys()
@@ -224,6 +240,7 @@ class Preprocess:
         ## Determine column names in sumstats file
         cols_df = pd.read_table(dataset_path, nrows=0)
         input_cols = cols_df.columns.tolist()
+        self.input_cols = input_cols
 
         ## Map column names using GPT
         sumstats_mapped_columns_og = self.ask_sumstats_col_order(input_cols, print=False)
@@ -348,22 +365,22 @@ class Preprocess:
 
         ## Convert chromosome "X" to 23, "Y" to 24 and ensure numeric types
         ## Sort by chromosome and position
-        sumstats_df['chromosome'] = sumstats_df['chromosome'].replace('X', 23)
-        sumstats_df['chromosome'] = sumstats_df['chromosome'].infer_objects(copy=False)
-        sumstats_df['chromosome'] = sumstats_df['chromosome'].replace('Y', 24).astype(int)
-        sumstats_df['chromosome'] = sumstats_df['chromosome'].infer_objects(copy=False)
-        sumstats_df.sort_values(by=['chromosome', 'position'], inplace=True)
+        sumstats_df[Cols.chromosome] = sumstats_df[Cols.chromosome].replace('X', 23)
+        sumstats_df[Cols.chromosome] = sumstats_df[Cols.chromosome].infer_objects(copy=False)
+        sumstats_df[Cols.chromosome] = sumstats_df[Cols.chromosome].replace('Y', 24).astype(int)
+        sumstats_df[Cols.chromosome] = sumstats_df[Cols.chromosome].infer_objects(copy=False)
+        sumstats_df.sort_values(by=[Cols.chromosome, Cols.position], inplace=True)
         sumstats_df.reset_index(drop=True, inplace=True)
 
         ## Assign previous chromosome and position for comparison
-        sumstats_df['prev_Chr'] = sumstats_df['chromosome'].shift(1, fill_value=sumstats_df.chromosome.iloc[0])
-        sumstats_df['prev_Position'] = sumstats_df['position'].shift(1, fill_value=sumstats_df.position.iloc[0])
+        sumstats_df['prev_Chr'] = sumstats_df[Cols.chromosome].shift(1, fill_value=sumstats_df.chromosome.iloc[0])
+        sumstats_df['prev_Position'] = sumstats_df[Cols.position].shift(1, fill_value=sumstats_df.position.iloc[0])
 
         ## Assign locus numbers
         ### First assign truth values based on conditions below
         ### Then create running sum of truths -> +1 for every true indicates new locus
-        sumstats_df['locus'] = (sumstats_df['chromosome'] != sumstats_df['prev_Chr']) | \
-                        (abs(sumstats_df['position'] - sumstats_df['prev_Position']) > Preprocess.DEFAULT_WINDOW)
+        sumstats_df['locus'] = (sumstats_df[Cols.chromosome] != sumstats_df['prev_Chr']) | \
+                        (abs(sumstats_df[Cols.position] - sumstats_df['prev_Position']) > Preprocess.DEFAULT_WINDOW)
         sumstats_df['locus'] = sumstats_df['locus'].cumsum() + 1
 
         ## Remove temporary columns
@@ -377,7 +394,7 @@ class Preprocess:
         leadsnp_df.drop_duplicates(subset='locus', inplace=True)
 
         ## Transform columns and format locus identifier
-        leadsnp_df.rename(columns={'chromosome':'CHR', 'position':'BP'}, inplace=True)
+        leadsnp_df.rename(columns={Cols.chromosome:'CHR', Cols.position:'BP'}, inplace=True)
         leadsnp_df['CHR'] = leadsnp_df['CHR'].replace(23, 'X')
         leadsnp_df['CHR'] = leadsnp_df['CHR'].replace(24, 'Y').astype(str)
         leadsnp_df['CHR'] = leadsnp_df['CHR'].infer_objects(copy=False)
