@@ -460,7 +460,7 @@ class Preprocess:
             chunks.append(chunk)
 
         sumstats_df = pd.concat(chunks)
-        sumstats_df = sumstats_df[(sumstats_df['beta'] < np.inf) & (sumstats_df['beta'] > 0)]
+        sumstats_df = sumstats_df[(abs(sumstats_df['beta']) < np.inf) & (abs(sumstats_df['beta']) > 0)]
         sumstats_df.reset_index(drop=True, inplace=True)
 
         if v:
