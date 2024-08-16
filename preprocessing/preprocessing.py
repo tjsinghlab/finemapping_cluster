@@ -1,5 +1,7 @@
 import os, pandas as pd
+import shutil
 import numpy as np
+import subprocess
 from openai import OpenAI
 
 class Cols:
@@ -171,6 +173,97 @@ class Preprocess:
         filtered_ordered_cols = completion.choices[0].message.content.split(',')
         return filtered_ordered_cols
 
+    def gpt_qc(self, gpt_output):
+        ## QC
+        supposed_ea = gpt_output[2]
+        for m in ['ref', 'other', 'oa']:
+            if m in supposed_ea.lower():
+                gpt_output[2] = gpt_output[3]
+                gpt_output[3] = supposed_ea
+
+        if supposed_ea == 'allele1' or supposed_ea == 'allele2' or supposed_ea == 'allele0':
+            gpt_output[2] = 'NA'
+
+        return gpt_output
+    
+    def remap_dataframe(self, df : pd.DataFrame, name_mappings : dict, cols_in_order : list) -> pd.DataFrame:
+        """
+            Renames and rearranges the columns of a DataFrame according to specified mappings and desired order.
+
+            Parameters:
+            ----------
+            df : pd.DataFrame
+                The DataFrame to be modified.
+            name_mappings : dict
+                A dictionary where keys are the current column names and values are the new column names.
+            cols_in_order : list
+                A list specifying the desired order of the columns in the resulting DataFrame.
+                
+            Returns:
+            -------
+            pd.DataFrame
+                A DataFrame with columns renamed and rearranged according to the specified mappings and desired order.
+
+            Example:
+            -------
+            > df = pd.DataFrame({'a': [1, 2, 3], 'b': [4, 5, 6], 'c': [7, 8, 9]})
+            > name_mappings = {'a': 'x', 'b': 'y', 'c': 'z'}
+            > cols_in_order = ['z', 'y', 'x']
+            > remap_dataframe(df, name_mappings, cols_in_order)
+               z  y  x    
+            0  7  4  1
+            1  8  5  2
+            2  9  6  3
+        """
+        df.rename(columns=name_mappings, inplace=True) # rename
+        return df[cols_in_order] # rearrange
+
+    def sort_input_file(self, sumstats_mapped_columns):
+        """
+        Sorts the input file by chromosome and position columns.
+        
+        """
+        new_old_column_mappings = {
+            s: e 
+            for s, e in zip(self.desired_columns, sumstats_mapped_columns) if e != 'NA'
+        }
+
+        # Sort input file by chromosome and position column names
+        chrom_col = new_old_column_mappings[Cols.chromosome]
+        chrom_col_idx = self.input_cols.index(chrom_col) + 1
+        pos_col = new_old_column_mappings[Cols.position]
+        position_col_idx = self.input_cols.index(pos_col) + 1
+
+        print(f"Sorting table by chromosome and position columns:")
+        print(f"{chrom_col}:{chrom_col_idx}, {pos_col}:{position_col_idx}")
+
+        # Create a temporary copy of the compressed input file in the output directory
+        temp_copy_path = os.path.join(self.out_dir, self.filename) + self.ext_full
+        shutil.copy(self.dataset_path, temp_copy_path)
+
+        # Decompress the temporary file
+        if self.ext2 == '.gz':
+            print(f"Decompressing temporary copy {temp_copy_path}")
+            subprocess.run(f"gzip -d {temp_copy_path}", shell=True, check=True)
+            temp_file = os.path.join(self.out_dir, self.filename) + self.ext1
+        else:
+            temp_file = temp_copy_path
+
+        # Sort the decompressed file while keeping the header
+        sorted_input_file = os.path.join(self.out_dir, self.filename) + '_sorted' + self.ext1
+
+        # Extract the header
+        subprocess.run(f"head -n 1 {temp_file} > {sorted_input_file}", shell=True, check=True)
+
+        # Sort the rest of the file
+        subprocess.run(f"tail -n +2 {temp_file} | sort -k{chrom_col_idx},{chrom_col_idx}n -k{position_col_idx},{position_col_idx}n >> {sorted_input_file}", shell=True, check=True)
+
+        # Clean up the decompressed temporary file if it was created
+        if self.ext2 == '.gz':
+            os.remove(temp_file)
+
+        print(f"Sorted file saved to {sorted_input_file}")
+        return sorted_input_file
 
     def loadmap_sumstats_table(self, dataset_path, **kwargs) -> int:
         """
@@ -209,6 +302,7 @@ class Preprocess:
             ext_full = ext1
             ext2 = None
 
+
         ## Handle .sumstats ext
         prev_f = filename
         filename, ext0 = os.path.splitext(filename)
@@ -220,6 +314,7 @@ class Preprocess:
             # print('[loadmap_sumstats_table] Skipping: Not a sumstats file (.sumstats.<ext>[.gz]).')
             # return
         
+
         if v:
             print(f'found {filename_with_ext}')
             # print(ext0, ext1, ext2, ext_full)
@@ -231,7 +326,6 @@ class Preprocess:
         self.filename = filename
 
         dm_keys = Preprocess.DELIM_MAPPINGS.keys()
-
         if ext1 not in dm_keys and ext1 != '.gz':
             print(f"Only supports {dm_keys} (+ .gz)")
             return 0
@@ -243,30 +337,19 @@ class Preprocess:
         self.input_cols = input_cols
 
         ## Map column names using GPT
-        sumstats_mapped_columns_og = self.ask_sumstats_col_order(input_cols, print=False)
+        gpt_output = self.ask_sumstats_col_order(input_cols, print=False)
+        sumstats_mapped_columns = self.gpt_qc(gpt_output)[:-1] # TODO: check if last column needed to fill in info
 
-        ## QC
-        supposed_ea = sumstats_mapped_columns_og[2]
-        for m in ['ref', 'other', 'oa']:
-            if m in supposed_ea.lower():
-                sumstats_mapped_columns_og[2] = sumstats_mapped_columns_og[3]
-                sumstats_mapped_columns_og[3] = supposed_ea
-
-        if supposed_ea == 'allele1' or supposed_ea == 'allele2' or supposed_ea == 'allele0':
-            sumstats_mapped_columns_og[2] = 'NA'
-        
         ## Count NA's
-        ct = 0
-        sumstats_mapped_columns = sumstats_mapped_columns_og[:-1]
-        for n in sumstats_mapped_columns:
-            if n == "NA":
-                ct += 1
+        ct = sum(1 for n in sumstats_mapped_columns if n == 'NA')
 
         if v:
-            print(f"Sumstat cols:\t{input_cols} ->\nGPT mapping:\t{sumstats_mapped_columns_og}")
+            print(f"Sumstat cols:\t{input_cols} ->\nGPT mapping:\t{sumstats_mapped_columns}")
+            
+        os.makedirs(self.out_dir, exist_ok=True)
         with open(self.out_dir + '/column_mappings.log', 'a') as out:
             fnout = filename if ct != 0 else f'{filename} *'
-            out.write(f"{fnout}\nUSR\t{input_cols}\nGPT\t{sumstats_mapped_columns_og}\n\n")
+            out.write(f"{fnout}\nUSR\t{input_cols}\nGPT\t{sumstats_mapped_columns}\n\n")
         
         ## Don't process file if there are NAs
         if ct != 0:
@@ -276,50 +359,70 @@ class Preprocess:
         if v:
             print()
         
+        # Get mappings
+        try:
+            sorted_input_file = self.sort_input_file(sumstats_mapped_columns)
+        except:
+            print('Failed to sort input file.')
+            return 0
+
+        old_new_column_mappings = {
+            s: e 
+            for s, e in zip(sumstats_mapped_columns, self.desired_columns) if s != 'NA'
+        }
+        
+        cols_in_order = [c for c in self.desired_columns if c in old_new_column_mappings.values()]
+
         ## Load in dataframe
         save_sumstats_as = os.path.join(self.out_dir, filename) + f'_preprocessed.tsv' # {ext_full}
-        mode='w'
-        header=True
+        mode = 'w'
+        header = True
+
+        print(input_cols)
+        print(sumstats_mapped_columns)
+
         for chunk in pd.read_table(
-                dataset_path,
+                sorted_input_file,
                 sep=self.DELIM_MAPPINGS[ext1],
                 usecols=sumstats_mapped_columns,
                 dtype=self.desired_columns_dict,
                 chunksize=Preprocess.CHUNK_SIZE
             ):
-
             # print(f'loaded in {df.shape[0]} SNPs')
+            print('='*15)
+            print(f'Processing chunk of {chunk.shape[0]} SNPs')
+            print('before mapping:', list(chunk.columns))
 
-            ## Rename columns to format desired by pipeline
-            old_new_column_mappings = {
-                s: e 
-                for s, e in zip(sumstats_mapped_columns, self.desired_columns) if s != 'NA'
-            }
-            # print(old_new_column_mappings)
-            
-            # rename
-            chunk.rename(
-                columns=old_new_column_mappings, 
-                inplace=True
-            )
+            # rename columns to format desired by pipeline
+            chunk = self.remap_dataframe(chunk, old_new_column_mappings, cols_in_order)
+            print('after mapping:', list(chunk.columns))
 
             # filter
-            cols = [c for c in chunk.columns if c in self.desired_columns]
-            print(cols)
+            chunk[Cols.allele1] = chunk[Cols.allele1].apply(lambda s : s.upper() if len(s) == 1 else np.nan)
+            chunk[Cols.allele2] = chunk[Cols.allele2].apply(lambda s : s.upper() if len(s) == 1 else np.nan)
+            chunk.dropna(subset=cols_in_order, inplace=True)
+            print(f'Filtered chunk to {chunk.shape[0]} SNPs (drop SNPs with NA alleles -> alleles of len > 1 set to NA)')
 
-            chunk.dropna(subset=cols, inplace=True)
-            chunk_filt = chunk[(chunk['beta'] < np.inf) & (chunk['beta'] > 0)]
+            chunk.sort_values(by=Cols.pval, ascending=True, inplace=True)
+            chunk.drop_duplicates(subset=[Cols.chromosome, Cols.position], keep='first', inplace=True)
+            chunk.sort_values(by=[Cols.chromosome, Cols.position], inplace=True)
+            print(f'Filtered chunk to {chunk.shape[0]} SNPs (drop duplicate SNPs -> keep SNP with lowest P-value)')
 
-            # rearrange
-            chunk_filt = chunk_filt[cols]
+            chunk_filt = chunk[(abs(chunk[Cols.beta]) < np.inf) & (abs(chunk[Cols.beta]) > 0)]
+            print(f'Filtered chunk to {chunk_filt.shape[0]} SNPs (drop irregular betas -> keep SNPs with abs(beta) > 0 and abs(beta)  inf)')
+            # thrown_away = chunk[~ ((abs(chunk[Cols.beta]) < np.inf) & (abs(chunk[Cols.beta]) > 0))]
+            # print(set(list(thrown_away.beta)))
 
             chunk_filt.to_csv(save_sumstats_as, mode=mode, header=header, index=False, sep='\t') # sep=',' if ext1 == '.csv' else '\t', compression='gzip' if ext2 else None
+            
             mode = 'a'
             header = False
+
             if v:
                 print(f'Saved chunk to \n{save_sumstats_as}')
             
         self.save_sumstats_as = save_sumstats_as
+        
         if v:
             print(f'Saved reformatted sumstats file to: {filename}_preprocessed.tsv')
             print()
