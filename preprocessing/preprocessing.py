@@ -189,6 +189,7 @@ class Preprocess:
     def remap_dataframe(self, df : pd.DataFrame, name_mappings : dict, cols_in_order : list) -> pd.DataFrame:
         """
             Renames and rearranges the columns of a DataFrame according to specified mappings and desired order.
+            Drops rows with NA in any column.
 
             Parameters:
             ----------
@@ -215,8 +216,10 @@ class Preprocess:
             1  8  5  2
             2  9  6  3
         """
-        df.rename(columns=name_mappings, inplace=True) # rename
-        return df[cols_in_order] # rearrange
+        df.rename(columns=name_mappings, inplace=True)              # rename columns
+        df_rearranged = df[cols_in_order].copy()                    # rearrange columns
+        df_rearranged.dropna(subset=cols_in_order, inplace=True)    # drop rows with NA in any column
+        return df_rearranged
 
     def sort_input_file(self, sumstats_mapped_columns):
         """
@@ -264,6 +267,12 @@ class Preprocess:
 
         print(f"Sorted file saved to {sorted_input_file}")
         return sorted_input_file
+    
+    @staticmethod
+    def check_allele(s):
+        if type(s) != str or len(s) != 1:
+            return np.nan
+        return s.upper()
 
     def loadmap_sumstats_table(self, dataset_path, **kwargs) -> int:
         """
@@ -401,9 +410,14 @@ class Preprocess:
                 print('after mapping:', list(chunk.columns))
 
             # filter
-            chunk[Cols.allele1] = chunk[Cols.allele1].apply(lambda s : s.upper() if len(s) == 1 else np.nan)
-            chunk[Cols.allele2] = chunk[Cols.allele2].apply(lambda s : s.upper() if len(s) == 1 else np.nan)
+            chunk[Cols.allele1] = chunk[Cols.allele1].astype(str)
+            chunk[Cols.allele1] = chunk[Cols.allele1].apply(self.check_allele)
+
+            chunk[Cols.allele2] = chunk[Cols.allele2].astype(str)
+            chunk[Cols.allele2] = chunk[Cols.allele2].apply(self.check_allele)
+
             chunk.dropna(subset=cols_in_order, inplace=True)
+            
             if v:
                 print(f'Filtered chunk to {chunk.shape[0]} SNPs (drop SNPs with NA alleles -> alleles of len > 1 set to NA)')
 
