@@ -453,6 +453,7 @@ class Preprocess:
             prints('='*15)
             prints(f'Processing chunk of {chunk.shape[0]} SNPs')
             prints('before mapping:', list(chunk.columns))
+            chunk_size = chunk.shape[0]
 
             # rename columns to format desired by pipeline
             chunk = self.remap_dataframe(chunk, old_new_column_mappings, cols_in_order)
@@ -466,16 +467,28 @@ class Preprocess:
             chunk[Cols.allele2] = chunk[Cols.allele2].apply(self.check_allele)
 
             chunk.dropna(subset=cols_in_order, inplace=True)
-            
+            if chunk.shape[0] < chunk_size / 2:
+                print('[Quitting] Dropped more than half of the SNPs due to NA alleles and indels removed.')
+                return 4
+            chunk_size = chunk.shape[0]
+
             prints(f'Filtered chunk to {chunk.shape[0]} SNPs (drop SNPs with NA alleles -> alleles of len > 1 set to NA)')
 
             chunk.sort_values(by=Cols.pval, ascending=True, inplace=True)
             chunk.drop_duplicates(subset=[Cols.chromosome, Cols.position], keep='first', inplace=True)
             chunk.sort_values(by=[Cols.chromosome, Cols.position], inplace=True)
+            
+            if chunk.shape[0] < chunk_size * 0.75:
+                print('[Quitting] Dropped more than quarter of the SNPs due to duplicates.')
+                return 4
+            chunk_size = chunk.shape[0]
             prints(f'Filtered chunk to {chunk.shape[0]} SNPs (drop duplicate SNPs -> keep SNP with lowest P-value)')
 
             chunk_filt = self.beta_filter(chunk) # chunk[(abs(chunk[Cols.beta]) < np.inf) & (abs(chunk[Cols.beta]) > 0)]
-
+            if chunk_filt.shape[0] < chunk_size * 0.75:
+                print('[Quitting] Dropped more than quarter of the SNPs due to irregular betas.')
+                return 4
+            chunk_size = chunk_filt.shape[0]
             prints(f'Filtered chunk to {chunk_filt.shape[0]} SNPs (drop irregular betas -> keep SNPs with abs(beta) > 0 and abs(beta)  inf)')
             # thrown_away = chunk[~ ((abs(chunk[Cols.beta]) < np.inf) & (abs(chunk[Cols.beta]) > 0))]
             # print(set(list(thrown_away.beta)))
