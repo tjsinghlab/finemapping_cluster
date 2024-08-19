@@ -261,9 +261,8 @@ class Preprocess:
         # Sort the rest of the file
         subprocess.run(f"tail -n +2 {temp_file} | sort -k{chrom_col_idx},{chrom_col_idx}n -k{position_col_idx},{position_col_idx}n >> {sorted_input_file}", shell=True, check=True)
 
-        # Clean up the decompressed temporary file if it was created
-        if self.ext2 == '.gz':
-            os.remove(temp_file)
+        # Clean up temporary file
+        os.remove(temp_file)
 
         print(f"Sorted file saved to {sorted_input_file}")
         return sorted_input_file
