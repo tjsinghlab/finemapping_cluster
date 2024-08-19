@@ -8,15 +8,21 @@ import yaml
 from cols import Cols
 
 class Prints:
+    """
+    Prints the arguments if verbose is True.
+    Appends the arguments to a log file 'preprocess.log'.
+    """
     def __init__(self, verbose):
         self.verbose = verbose
 
     def __call__(self, *args):
-        """
-        Prints the arguments if verbose is True.
-        """
+
         if self.verbose:
             print(*args)
+        
+        with open('preprocess.log', 'a') as f:
+            print(*args, file=f)
+    
             
 class Preprocess:
 
@@ -492,6 +498,11 @@ class Preprocess:
             prints(f'Filtered chunk to {chunk_filt.shape[0]} SNPs (drop irregular betas -> keep SNPs with abs(beta) > 0 and abs(beta)  inf)')
             # thrown_away = chunk[~ ((abs(chunk[Cols.beta]) < np.inf) & (abs(chunk[Cols.beta]) > 0))]
             # print(set(list(thrown_away.beta)))
+            
+            # Ensure chromosome is string and replace 'X' with 23, 'Y' with 24
+            chunk_filt[Cols.chromosome] = chunk_filt[Cols.chromosome].astype(str) \
+                    .replace('23', 'X') \
+                    .replace('24', 'Y')
 
             chunk_filt.to_csv(save_sumstats_as, mode = mode, header = header, index = False, sep = '\t') 
             # sep=',' if ext1 == '.csv' else '\t', compression='gzip' if ext2 else None
