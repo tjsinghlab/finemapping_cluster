@@ -8,8 +8,8 @@ from preprocessing import Preprocess
 
 def main():
 
-    directory_of_sumstats = '' # YOUR INPUT PATH
-    output_directory = '' # YOUR OUTPUT PATH
+    directory_of_sumstats = '/gpfs/commons/groups/sanjana_lab/mdrabkin/gwas_data/raw/European' # YOUR INPUT PATH
+    output_directory = '/gpfs/commons/groups/sanjana_lab/mdrabkin/gwas_data/preprocessed/European/v2' # YOUR OUTPUT PATH
 
     ft = Preprocess(
         client = OpenAI(
@@ -45,8 +45,5 @@ def main():
 if __name__ == '__main__':
     cols_instance = Cols('header.yaml')
     print(cols_instance)
-    
-    default_cols = Cols.load_default_sumstats_cols()
-    print(default_cols)
 
     main()

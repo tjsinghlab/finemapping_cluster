@@ -131,3 +131,50 @@ for path in my_input_files:
 fps = glob.glob(f'{output_directory}/*')
 print(fps)
 ```
+
+## Run batch job in cluster using Slurm
+
+Running `submit_preprocessing.sh` involves a few steps:
+
+1. Get all filenames of interest into one folder and create a file that lists these filenames, as follows:
+
+```{bash}
+# first move all sumstats files of interest into one input folder
+# cd into that folder
+(base) [sfriedman@pe2-login01 ~]$ cd /gpfs/commons/groups/sanjana_lab/mdrabkin/gwas_data/raw/European
+
+# use ls <pattern>* to get the filenames of interest into a file:
+(base) [sfriedman@pe2-login01 European]$ ls GCST* > ~/filepaths.txt # all files with GCST pattern should be listed here
+
+# if you need to manually edit this file afterwards, here's one method:
+(base) [sfriedman@pe2-login01 European]$ vim ~/filepaths.txt # manual filtering - only include desired files
+
+```
+
+2. Edit `submit_preprocessing.sh`:
+
+```{bash}
+#!/bin/bash
+#SBATCH --job-name=preprocess
+#SBATCH --output=./logs/preprocess_%A_%a.out    # set this to your desired location
+#SBATCH --array=1-68                            # use wc -l ~/filepaths.txt to get the count
+#SBATCH --cpus-per-task=2                       #   & use as many #'s as files you have
+#SBATCH --mem=64G
+
+# fill in the following fields:
+
+export OPENAI_ORGANIZATION=""
+export OPENAI_PROJECT=""
+export OPENAI_API_KEY=""
+
+export PREPROC_INPUT_DIR=""
+export PREPROC_OUTPUT_DIR=""
+export PREPROC_FILEPATHS="~/filepaths.txt" # however you named your filepaths file
+
+...
+
+```
+
+3. Now run with `sbatch submit_preprocessing.sh`
+- Use `squeue -u <your-username>` for updates.
+- Use `scancel <job-id>` to cancel.

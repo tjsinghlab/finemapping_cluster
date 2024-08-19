@@ -2,7 +2,9 @@ import os, pandas as pd
 import shutil
 import numpy as np
 import subprocess
-from openai import OpenAI
+import openai
+import random
+import time
 import yaml
 
 from cols import Cols
@@ -12,18 +14,20 @@ class Prints:
     Prints the arguments if verbose is True.
     Appends the arguments to a log file 'preprocess.log'.
     """
-    def __init__(self, verbose):
+    def __init__(self, verbose, **kwargs):
         self.verbose = verbose
+        self.out_dir = kwargs['out_dir'] if 'out_dir' in kwargs else '.'
+        self.filename = kwargs['filename'] if 'filename' in kwargs else 'preprocess'
 
     def __call__(self, *args):
 
         if self.verbose:
             print(*args)
         
-        with open('preprocess.log', 'a') as f:
+        with open(f'{self.out_dir}/{self.filename}.log', 'a') as f:
             print(*args, file=f)
-    
-            
+
+
 class Preprocess:
 
     DEFAULT_SUMSTATS_COLS = {
@@ -48,6 +52,7 @@ class Preprocess:
     DEFAULT_SIG_THRESHOLD = 5e-8
     DEFAULT_WINDOW = 5e5
     CHUNK_SIZE = 2e6
+    MAX_RETRIES = 4
 
     def __init__(self, client, out_dir, **kwargs):
         """
@@ -161,7 +166,7 @@ class Preprocess:
                             over other similar options because we are focusing on {self.ancestry}.
                 odds_ratio  -> NA: Missing value.
 
-            Other examples of p-value columns include: neg_log_10_p_value.
+            Other examples of p-value columns include: neg_log_10_p_value, p_value.
             Other examples of beta columns include logOR since beta = log(OR).
             Other examples of position columns include: base_pair_location.
 
@@ -175,16 +180,38 @@ class Preprocess:
         if 'print' in kwargs and kwargs['print']:
             print(query)
         
-        completion = self.client.chat.completions.create(
-            model="gpt-4o",
-            messages=[
-                {"role": "system", "content": "You are a helpful assistant."},
-                {"role": "user", "content": query}
-            ]
-        )
+        retries = 0
+        while retries < Preprocess.MAX_RETRIES:
+            try:
+                # Attempt to make the API request
+                completion = self.client.chat.completions.create(
+                    model="gpt-4o",
+                    messages=[
+                        {"role": "system", "content": "You are a helpful assistant."},
+                        {"role": "user", "content": query}
+                    ]
+                )
 
-        filtered_ordered_cols = completion.choices[0].message.content.split(',')
-        return filtered_ordered_cols
+                # Process the response
+                filtered_ordered_cols = completion.choices[0].message.content.split(',')
+                return filtered_ordered_cols
+
+            except openai.RateLimitError as e:
+                # Handle rate limit error
+                print(f"Rate limit exceeded: {e}")
+                retries += 1
+                # Exponential backoff with some jitter
+                delay = (2 ** retries) + random.uniform(0, 1)
+                print(f"Retrying in {delay:.2f} seconds...")
+                time.sleep(delay)
+
+            except Exception as e:
+                # Handle other exceptions
+                print(f"An error occurred: {e}")
+                break
+
+        print("Max retries exceeded.")
+        return None
 
     def gpt_qc(self, gpt_output):
         """
@@ -260,6 +287,7 @@ class Preprocess:
             str
                 Path to the sorted input file.
         """
+        prints = self.prints
         new_old_column_mappings = {
             s: e 
             for s, e in zip(self.desired_columns, sumstats_mapped_columns) if e != 'NA'
@@ -271,8 +299,8 @@ class Preprocess:
         pos_col = new_old_column_mappings[Cols.position]
         position_col_idx = self.input_cols.index(pos_col) + 1
 
-        print(f"Sorting table by chromosome and position columns:")
-        print(f"{chrom_col}:{chrom_col_idx}, {pos_col}:{position_col_idx}")
+        prints(f"Sorting table by chromosome and position columns:")
+        prints(f"{chrom_col}:{chrom_col_idx}, {pos_col}:{position_col_idx}")
 
         # Create a temporary copy of the compressed input file in the output directory
         temp_copy_path = os.path.join(self.out_dir, self.filename) + self.ext_full
@@ -280,7 +308,7 @@ class Preprocess:
 
         # Decompress the temporary file
         if self.ext2 == '.gz':
-            print(f"Decompressing temporary copy {temp_copy_path}")
+            prints(f"Decompressing temporary copy {temp_copy_path}")
             subprocess.run(f"gzip -d {temp_copy_path}", shell=True, check=True)
             temp_file = os.path.join(self.out_dir, self.filename) + self.ext1
         else:
@@ -298,7 +326,7 @@ class Preprocess:
         # Clean up temporary file
         os.remove(temp_file)
 
-        print(f"Sorted file saved to {sorted_input_file}")
+        prints(f"Sorted file saved to {sorted_input_file}")
         return sorted_input_file
     
     @staticmethod
@@ -354,13 +382,14 @@ class Preprocess:
         """
         self.dataset_path = dataset_path
         v = True if ('verbose' in kwargs and kwargs['verbose']) else False
-        prints = Prints(v)
 
         ## Get the base filename
         filename_with_ext = os.path.basename(dataset_path)
 
         ## Split the filename and extension
         filename, ext1 = os.path.splitext(filename_with_ext)
+
+
 
         ## Read in column names
         ## Handle the case for double extension (e.g., .txt.gz)
@@ -386,6 +415,9 @@ class Preprocess:
             # print('[loadmap_sumstats_table] Skipping: Not a sumstats file (.sumstats.<ext>[.gz]).')
             # return
         
+        prints = Prints(v, out_dir = self.out_dir, filename = filename)
+        self.prints = prints
+
         prints(f'found {filename_with_ext}')
         prints()
 
@@ -396,7 +428,7 @@ class Preprocess:
 
         dm_keys = Preprocess.DELIM_MAPPINGS.keys()
         if ext1 not in dm_keys and ext1 != '.gz':
-            print(f"Only supports {dm_keys} (+ .gz)")
+            prints(f"Only supports {dm_keys} (+ .gz)")
             return 1
 
         # ChatGPT integration
@@ -421,7 +453,7 @@ class Preprocess:
         
         ## Don't process file if there are NAs
         if ct != 0:
-            print("GPT couldn't make out all the columns.")
+            prints("GPT couldn't make out all the columns.")
             return 2
     
         prints()
@@ -430,7 +462,7 @@ class Preprocess:
         try:
             sorted_input_file = self.sort_input_file(sumstats_mapped_columns)
         except:
-            print('Failed to sort input file.')
+            prints('Failed to sort input file.')
             return 3
 
         old_new_column_mappings = {
@@ -474,7 +506,7 @@ class Preprocess:
 
             chunk.dropna(subset=cols_in_order, inplace=True)
             if chunk.shape[0] < chunk_size / 2:
-                print('[Quitting] Dropped more than half of the SNPs due to NA alleles and indels removed.')
+                prints('[Quitting] Dropped more than half of the SNPs due to NA alleles and indels removed.')
                 return 4
             chunk_size = chunk.shape[0]
 
@@ -485,24 +517,26 @@ class Preprocess:
             chunk.sort_values(by=[Cols.chromosome, Cols.position], inplace=True)
             
             if chunk.shape[0] < chunk_size * 0.75:
-                print('[Quitting] Dropped more than quarter of the SNPs due to duplicates.')
+                prints('[Quitting] Dropped more than quarter of the SNPs due to duplicates.')
                 return 4
             chunk_size = chunk.shape[0]
             prints(f'Filtered chunk to {chunk.shape[0]} SNPs (drop duplicate SNPs -> keep SNP with lowest P-value)')
 
             chunk_filt = self.beta_filter(chunk) # chunk[(abs(chunk[Cols.beta]) < np.inf) & (abs(chunk[Cols.beta]) > 0)]
             if chunk_filt.shape[0] < chunk_size * 0.75:
-                print('[Quitting] Dropped more than quarter of the SNPs due to irregular betas.')
+                prints('[Quitting] Dropped more than quarter of the SNPs due to irregular betas.')
                 return 4
             chunk_size = chunk_filt.shape[0]
-            prints(f'Filtered chunk to {chunk_filt.shape[0]} SNPs (drop irregular betas -> keep SNPs with abs(beta) > 0 and abs(beta)  inf)')
+            prints(f'Filtered chunk to {chunk_filt.shape[0]} SNPs (drop irregular betas -> keep SNPs with abs(beta) > 0 and abs(beta) < inf)')
             # thrown_away = chunk[~ ((abs(chunk[Cols.beta]) < np.inf) & (abs(chunk[Cols.beta]) > 0))]
-            # print(set(list(thrown_away.beta)))
+            # prints(set(list(thrown_away.beta)))
             
             # Ensure chromosome is string and replace 'X' with 23, 'Y' with 24
-            chunk_filt[Cols.chromosome] = chunk_filt[Cols.chromosome].astype(str) \
+            chunk_filt.loc[:, Cols.chromosome] = chunk_filt.loc[:, Cols.chromosome].astype(str) \
                     .replace('23', 'X') \
-                    .replace('24', 'Y')
+                    .replace('24', 'Y') \
+                    .infer_objects(copy=False)
+            # A value is trying to be set on a copy of a slice from a DataFrame.  Try using .loc[row_indexer,col_indexer] = value instead
 
             chunk_filt.to_csv(save_sumstats_as, mode = mode, header = header, index = False, sep = '\t') 
             # sep=',' if ext1 == '.csv' else '\t', compression='gzip' if ext2 else None
@@ -536,7 +570,7 @@ class Preprocess:
                 The DataFrame is also stored in self.leadsnp_df.
         """
         v = True if ('verbose' in kwargs and kwargs['verbose']) else False
-        prints = Prints(v)
+        prints = Prints(v, out_dir = self.out_dir, filename = self.filename)
 
         chunks = []
         for chunk in pd.read_table(
