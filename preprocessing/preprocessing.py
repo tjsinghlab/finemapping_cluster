@@ -3,17 +3,21 @@ import shutil
 import numpy as np
 import subprocess
 from openai import OpenAI
+import yaml
 
-class Cols:
-    chromosome = 'chromosome'
-    position = 'position'
-    allele1 = 'allele1'
-    allele2 = 'allele2'
-    beta = 'beta'
-    se = 'se'
-    pval = 'pval'
-    odds_ratio = 'or'
+from cols import Cols
 
+class Prints:
+    def __init__(self, verbose):
+        self.verbose = verbose
+
+    def __call__(self, *args):
+        """
+        Prints the arguments if verbose is True.
+        """
+        if self.verbose:
+            print(*args)
+            
 class Preprocess:
 
     DEFAULT_SUMSTATS_COLS = {
@@ -28,10 +32,10 @@ class Preprocess:
     }
 
     DELIM_MAPPINGS = {
-        '.tsv': '\t',
         '.csv': ',',
-        '.txt': ' ',
-        '.tbl': '\t'
+        '.tbl': '\t',
+        '.tsv': '\t',
+        '.txt': ' '
     }
 
     DEFAULT_ANCESTRY = 'EUR'
@@ -41,7 +45,7 @@ class Preprocess:
 
     def __init__(self, client, out_dir, **kwargs):
         """
-        Initializes the Preprocess class.
+        Initializes the Preprocess class, which preprocesses summary statistics files for fine-mapping.
 
         Parameters:
             client : object
@@ -54,6 +58,9 @@ class Preprocess:
                         These are the column names your downstream pipeline expects
                         of your sumstats file as keys and their corresponding dtypes
                         as values (defaults to DEFAULT_SUMSTATS_COLS).
+                    desired_columns : list, optional
+                        These are the column names your downstream pipeline expects
+                        of your sumstats file (defaults to list of keys in desired_columns_dict).
                     significance_threshold : float, optional
                         Significance threshold for filtering SNPs.
                         - loadmap_sumstats_table defaults to None.
@@ -119,7 +126,7 @@ class Preprocess:
 
             Example 1:
             My sequence:    "{desired_columns_str}"
-            GWAS file:      "chr,RSID,pos,ref,alt,MAFreq,p,error,b,odds_ratio"
+            GWAS file:      "chr,RSID,pos,ref,alt,MAFreq,p,error,b,or"
 
             Mapping:        "chr,pos,ref,alt,b,error,p,or"
             Notes:
@@ -130,7 +137,7 @@ class Preprocess:
                 beta    ->  b: Beta value (B).
                 se  ->  error: Standard error (SE).
                 pval   ->  p: P-value (P).
-                or -> odds_ratio: Odds Ratio (OR).
+                odds_ratio -> or: Odds Ratio (OR).
 
             Example 2:
             My sequence:    "{desired_columns_str}"
@@ -146,7 +153,7 @@ class Preprocess:
                 se  ->  standard_error: Standard error (SE).
                 pval   ->  pval_{self.ancestry.lower()}: P-value (P). pval_{self.ancestry.lower()} selected among pvalues
                             over other similar options because we are focusing on {self.ancestry}.
-                or  -> NA: Missing value.
+                odds_ratio  -> NA: Missing value.
 
             Other examples of p-value columns include: neg_log_10_p_value.
             Other examples of beta columns include logOR since beta = log(OR).
@@ -174,7 +181,21 @@ class Preprocess:
         return filtered_ordered_cols
 
     def gpt_qc(self, gpt_output):
-        ## QC
+        """
+        Checks the GPT output for common errors and corrects them.
+        If the effect allele is not mentioned in the output, the function assumes that the effect allele is allele1.
+        If the effect allele is mentioned as 'allele1', 'allele2', or 'allele0', the function assumes that the effect allele is 'NA'.
+
+        Parameters:
+        ----------
+        gpt_output : list
+            The output from the GPT model.
+
+        Returns:
+        -------
+        list
+            The corrected output from the GPT model.
+        """
         supposed_ea = gpt_output[2]
         for m in ['ref', 'other', 'oa']:
             if m in supposed_ea.lower():
@@ -188,43 +209,50 @@ class Preprocess:
     
     def remap_dataframe(self, df : pd.DataFrame, name_mappings : dict, cols_in_order : list) -> pd.DataFrame:
         """
-            Renames and rearranges the columns of a DataFrame according to specified mappings and desired order.
-            Drops rows with NA in any column.
+        Renames and rearranges the columns of a DataFrame according to specified mappings and desired order.
+        Drops rows with NA in any column.
 
-            Parameters:
-            ----------
-            df : pd.DataFrame
-                The DataFrame to be modified.
-            name_mappings : dict
-                A dictionary where keys are the current column names and values are the new column names.
-            cols_in_order : list
-                A list specifying the desired order of the columns in the resulting DataFrame.
-                
-            Returns:
-            -------
-            pd.DataFrame
-                A DataFrame with columns renamed and rearranged according to the specified mappings and desired order.
+        Parameters:
+        ----------
+        df : pd.DataFrame
+            The DataFrame to be modified.
+        name_mappings : dict
+            A dictionary where keys are the current column names and values are the new column names.
+        cols_in_order : list
+            A list specifying the desired order of the columns in the resulting DataFrame.
+            
+        Returns:
+        -------
+        pd.DataFrame
+            A DataFrame with columns renamed and rearranged according to the specified mappings and desired order.
 
-            Example:
-            -------
-            > df = pd.DataFrame({'a': [1, 2, 3], 'b': [4, 5, 6], 'c': [7, 8, 9]})
-            > name_mappings = {'a': 'x', 'b': 'y', 'c': 'z'}
-            > cols_in_order = ['z', 'y', 'x']
-            > remap_dataframe(df, name_mappings, cols_in_order)
-               z  y  x    
-            0  7  4  1
-            1  8  5  2
-            2  9  6  3
+        Example:
+        -------
+        > df = pd.DataFrame({'a': [1, 2, 3], 'b': [4, 5, 6], 'c': [7, 8, 9]})
+        > name_mappings = {'a': 'x', 'b': 'y', 'c': 'z'}
+        > cols_in_order = ['z', 'y', 'x']
+        > remap_dataframe(df, name_mappings, cols_in_order)
+            z  y  x    
+        0  7  4  1
+        1  8  5  2
+        2  9  6  3
         """
         df.rename(columns=name_mappings, inplace=True)              # rename columns
         df_rearranged = df[cols_in_order].copy()                    # rearrange columns
         df_rearranged.dropna(subset=cols_in_order, inplace=True)    # drop rows with NA in any column
         return df_rearranged
 
-    def sort_input_file(self, sumstats_mapped_columns):
+    def sort_input_file(self, sumstats_mapped_columns) -> str:
         """
         Sorts the input file by chromosome and position columns.
         
+        Parameters:
+            sumstats_mapped_columns : list
+                List of column names in the input file after mapping.
+
+        Returns:
+            str
+                Path to the sorted input file.
         """
         new_old_column_mappings = {
             s: e 
@@ -269,10 +297,39 @@ class Preprocess:
     
     @staticmethod
     def check_allele(s):
+        """
+        Checks if the input string is a valid allele.
+        If the input is not a string or has length different from 1, returns np.nan.
+        Otherwise, returns the input string converted to uppercase.
+
+        Parameters:
+            s : str
+                The input string to be checked.
+
+        Returns:
+            str or np.nan
+                The input string converted to uppercase if it is a valid allele, or np.nan otherwise.
+        """
         if type(s) != str or len(s) != 1:
             return np.nan
         return s.upper()
 
+    def beta_filter(self, df) -> pd.DataFrame:
+        """
+        Filters the DataFrame by removing rows with irregular beta values.
+
+        Parameters:
+            df : pd.DataFrame
+                The DataFrame to be filtered.
+
+        Returns:
+            pd.DataFrame
+                The filtered DataFrame.
+        """
+        sumstats_df = df[(abs(df['beta']) < np.inf) & (abs(df['beta']) > 0)]
+        sumstats_df.reset_index(drop=True, inplace=True)
+        return sumstats_df
+    
     def loadmap_sumstats_table(self, dataset_path, **kwargs) -> int:
         """
         Loads and maps the summary statistics file to the expected column order for the finemapping pipeline.
@@ -291,6 +348,7 @@ class Preprocess:
         """
         self.dataset_path = dataset_path
         v = True if ('verbose' in kwargs and kwargs['verbose']) else False
+        prints = Prints(v)
 
         ## Get the base filename
         filename_with_ext = os.path.basename(dataset_path)
@@ -322,11 +380,8 @@ class Preprocess:
             # print('[loadmap_sumstats_table] Skipping: Not a sumstats file (.sumstats.<ext>[.gz]).')
             # return
         
-
-        if v:
-            print(f'found {filename_with_ext}')
-            # print(ext0, ext1, ext2, ext_full)
-            print()
+        prints(f'found {filename_with_ext}')
+        prints()
 
         self.ext1 = ext1
         self.ext2 = ext2
@@ -351,8 +406,7 @@ class Preprocess:
         ## Count NA's
         ct = sum(1 for n in sumstats_mapped_columns if n == 'NA')
 
-        if v:
-            print(f"Sumstat cols:\t{input_cols} ->\nGPT mapping:\t{sumstats_mapped_columns}")
+        prints(f"Sumstat cols:\t{input_cols} ->\nGPT mapping:\t{sumstats_mapped_columns}")
             
         os.makedirs(self.out_dir, exist_ok=True)
         with open(self.out_dir + '/column_mappings.log', 'a') as out:
@@ -364,8 +418,7 @@ class Preprocess:
             print("GPT couldn't make out all the columns.")
             return 2
     
-        if v:
-            print()
+        prints()
         
         # Get mappings
         try:
@@ -386,9 +439,8 @@ class Preprocess:
         mode = 'w'
         header = True
 
-        if v:
-            print(input_cols)
-            print(sumstats_mapped_columns)
+        prints(input_cols)
+        prints(sumstats_mapped_columns)
 
         for chunk in pd.read_table(
                 sorted_input_file,
@@ -397,16 +449,14 @@ class Preprocess:
                 dtype=self.desired_columns_dict,
                 chunksize=Preprocess.CHUNK_SIZE
             ):
-            # print(f'loaded in {df.shape[0]} SNPs')
-            if v:
-                print('='*15)
-                print(f'Processing chunk of {chunk.shape[0]} SNPs')
-                print('before mapping:', list(chunk.columns))
+            # prints(f'loaded in {df.shape[0]} SNPs')
+            prints('='*15)
+            prints(f'Processing chunk of {chunk.shape[0]} SNPs')
+            prints('before mapping:', list(chunk.columns))
 
             # rename columns to format desired by pipeline
             chunk = self.remap_dataframe(chunk, old_new_column_mappings, cols_in_order)
-            if v:
-                print('after mapping:', list(chunk.columns))
+            prints('after mapping:', list(chunk.columns))
 
             # filter
             chunk[Cols.allele1] = chunk[Cols.allele1].astype(str)
@@ -417,37 +467,33 @@ class Preprocess:
 
             chunk.dropna(subset=cols_in_order, inplace=True)
             
-            if v:
-                print(f'Filtered chunk to {chunk.shape[0]} SNPs (drop SNPs with NA alleles -> alleles of len > 1 set to NA)')
+            prints(f'Filtered chunk to {chunk.shape[0]} SNPs (drop SNPs with NA alleles -> alleles of len > 1 set to NA)')
 
             chunk.sort_values(by=Cols.pval, ascending=True, inplace=True)
             chunk.drop_duplicates(subset=[Cols.chromosome, Cols.position], keep='first', inplace=True)
             chunk.sort_values(by=[Cols.chromosome, Cols.position], inplace=True)
-            if v:
-                print(f'Filtered chunk to {chunk.shape[0]} SNPs (drop duplicate SNPs -> keep SNP with lowest P-value)')
+            prints(f'Filtered chunk to {chunk.shape[0]} SNPs (drop duplicate SNPs -> keep SNP with lowest P-value)')
 
-            chunk_filt = chunk[(abs(chunk[Cols.beta]) < np.inf) & (abs(chunk[Cols.beta]) > 0)]
-            if v:
-                print(f'Filtered chunk to {chunk_filt.shape[0]} SNPs (drop irregular betas -> keep SNPs with abs(beta) > 0 and abs(beta)  inf)')
+            chunk_filt = self.beta_filter(chunk) # chunk[(abs(chunk[Cols.beta]) < np.inf) & (abs(chunk[Cols.beta]) > 0)]
+
+            prints(f'Filtered chunk to {chunk_filt.shape[0]} SNPs (drop irregular betas -> keep SNPs with abs(beta) > 0 and abs(beta)  inf)')
             # thrown_away = chunk[~ ((abs(chunk[Cols.beta]) < np.inf) & (abs(chunk[Cols.beta]) > 0))]
             # print(set(list(thrown_away.beta)))
 
-            chunk_filt.to_csv(save_sumstats_as, mode=mode, header=header, index=False, sep='\t') # sep=',' if ext1 == '.csv' else '\t', compression='gzip' if ext2 else None
+            chunk_filt.to_csv(save_sumstats_as, mode = mode, header = header, index = False, sep = '\t') 
+            # sep=',' if ext1 == '.csv' else '\t', compression='gzip' if ext2 else None
             
             mode = 'a'
             header = False
 
-            if v:
-                print(f'Saved chunk to \n{save_sumstats_as}')
+            prints(f'Saved chunk to \n{save_sumstats_as}')
             
         self.save_sumstats_as = save_sumstats_as
         
-        if v:
-            print(f'Saved reformatted sumstats file to: {filename}_preprocessed.tsv')
-            print()
+        prints(f'Saved reformatted sumstats file to: {filename}_preprocessed.tsv')
+        prints()
 
         return 0
-
 
     def create_leadsnp_table(self, **kwargs) -> pd.DataFrame:
         """
@@ -466,6 +512,7 @@ class Preprocess:
                 The DataFrame is also stored in self.leadsnp_df.
         """
         v = True if ('verbose' in kwargs and kwargs['verbose']) else False
+        prints = Prints(v)
 
         chunks = []
         for chunk in pd.read_table(
@@ -474,23 +521,25 @@ class Preprocess:
                 chunksize=Preprocess.CHUNK_SIZE
             ):
 
-            chunk = chunk[chunk['pval'] <= self.significance_threshold].copy() # 5e-8
+            chunk = chunk[chunk[Cols.pval] <= self.significance_threshold].copy() # 5e-8
             chunk = chunk.dropna()
             chunks.append(chunk)
 
         sumstats_df = pd.concat(chunks)
-        sumstats_df = sumstats_df[(abs(sumstats_df['beta']) < np.inf) & (abs(sumstats_df['beta']) > 0)]
-        sumstats_df.reset_index(drop=True, inplace=True)
+        sumstats_df = self.beta_filter(sumstats_df)
 
-        if v:
-            print(f'filtered down to {sumstats_df.shape[0]} SNPs with P < {self.significance_threshold}')
+        if sumstats_df.shape[0] == 0:
+            prints('No SNPs found.')
+            return None
+
+        prints(f'filtered down to {sumstats_df.shape[0]} SNPs with P < {self.significance_threshold}')
 
         ## Convert chromosome "X" to 23, "Y" to 24 and ensure numeric types
         ## Sort by chromosome and position
         sumstats_df[Cols.chromosome] = sumstats_df[Cols.chromosome].replace('X', 23)
         sumstats_df[Cols.chromosome] = sumstats_df[Cols.chromosome].infer_objects(copy=False)
         sumstats_df[Cols.chromosome] = sumstats_df[Cols.chromosome].replace('Y', 24).astype(int)
-        sumstats_df[Cols.chromosome] = sumstats_df[Cols.chromosome].infer_objects(copy=False)
+        # sumstats_df[Cols.chromosome] = sumstats_df[Cols.chromosome].infer_objects(copy=False)
         sumstats_df.sort_values(by=[Cols.chromosome, Cols.position], inplace=True)
         sumstats_df.reset_index(drop=True, inplace=True)
 
@@ -527,11 +576,17 @@ class Preprocess:
         save_leadsnp_as = os.path.join(self.out_dir, self.filename) + f'_preprocessed_leadSNPs.tsv'
         leadsnp_df.to_csv(save_leadsnp_as, index=False, sep='\t')
 
-        if v:
-            print(leadsnp_df.head())
-            print()
-
-            print(f'Saved lead SNP file to \n{save_leadsnp_as}')
-            print()
+        prints(leadsnp_df.head())
+        prints()
+        prints(f'Saved lead SNP file to \n{save_leadsnp_as}')
+        prints()
 
         return leadsnp_df
+
+
+
+if __name__ == "__main__":
+    cols = Cols('header.yaml')
+
+    for column, dtype in cols.columns.items():
+        print(f"{column}: {dtype}")

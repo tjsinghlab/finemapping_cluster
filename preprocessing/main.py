@@ -2,6 +2,8 @@ import pandas as pd
 import os
 import glob
 from openai import OpenAI
+
+from cols import Cols
 from preprocessing import Preprocess
 
 def main():
@@ -35,10 +37,16 @@ def main():
 
         if res != 0:
             continue
-        
+
         # create leadsnp table if GPT was able to detect, map, and rearrange columns
         ft.create_leadsnp_table(verbose=True)
 
 
 if __name__ == '__main__':
+    cols_instance = Cols('header.yaml')
+    print(cols_instance)
+    
+    default_cols = Cols.load_default_sumstats_cols()
+    print(default_cols)
+
     main()
