@@ -97,3 +97,5 @@ preprocessing/__pycache__
 preprocessing/__pycache__/*
 preprocessing/.venv
 preprocessing/.venv/*
+preprocessing/logs
+preprocessing/logs/*

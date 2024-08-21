@@ -1,22 +1,33 @@
 import pandas as pd
-import os
+import os, sys
 import glob
 from openai import OpenAI
+import google.generativeai as genai
+import importlib
 
+import preprocessing
+import cols
+importlib.reload(cols)
+importlib.reload(preprocessing)
 from cols import Cols
 from preprocessing import Preprocess
 
 def main():
 
-    directory_of_sumstats = '/gpfs/commons/groups/sanjana_lab/mdrabkin/gwas_data/raw/European' # YOUR INPUT PATH
-    output_directory = '/gpfs/commons/groups/sanjana_lab/mdrabkin/gwas_data/preprocessed/European/v2' # YOUR OUTPUT PATH
+    directory_of_sumstats = '' # YOUR INPUT PATH
+    output_directory = '' # YOUR OUTPUT PATH
 
+    # client = OpenAI(
+    #         organization = os.getenv('OPENAI_ORGANIZATION'), # see README.md
+    #         project = os.getenv('OPENAI_PROJECT'),
+    #         api_key = os.getenv('OPENAI_API_KEY')
+    #     )
+
+    genai.configure(api_key = os.getenv('GEMINI_API_KEY'))
+    model = genai.GenerativeModel('gemini-pro')
+    
     ft = Preprocess(
-        client = OpenAI(
-            organization = os.getenv('OPENAI_ORGANIZATION'), # see README.md
-            project = os.getenv('OPENAI_PROJECT'),
-            api_key = os.getenv('OPENAI_API_KEY')
-        ), 
+        client = model, 
         out_dir=output_directory # sets output path
     )
 
@@ -24,7 +35,7 @@ def main():
     ft.significance_threshold = 5e-8 # default value is already 5e-8
     ft.ancestry = 'EUR' # default value is 'EUR' but can be statically
 
-    for path in glob.glob(directory_of_sumstats + '/*'):
+    for path in glob.glob(directory_of_sumstats + '/*')[::-1]:
 
         # loop through all files in input path
         print(path)
@@ -40,6 +51,7 @@ def main():
 
         # create leadsnp table if GPT was able to detect, map, and rearrange columns
         ft.create_leadsnp_table(verbose=True)
+
 
 
 if __name__ == '__main__':

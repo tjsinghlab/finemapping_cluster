@@ -1,7 +1,10 @@
 import pandas as pd
 import os
 import glob
+
 from openai import OpenAI
+import google.generativeai as genai
+
 import multiprocessing
 import argparse
 import importlib
@@ -14,12 +17,15 @@ from cols import Cols
 from preprocessing import Preprocess
 
 def main(output_directory, file_path):
-    client = OpenAI(
-        organization=os.getenv('OPENAI_ORGANIZATION'),  # see README.md
-        project=os.getenv('OPENAI_PROJECT'),
-        api_key=os.getenv('OPENAI_API_KEY')
-    )
+    # client = OpenAI(
+    #     organization=os.getenv('OPENAI_ORGANIZATION'),  # see README.md
+    #     project=os.getenv('OPENAI_PROJECT'),
+    #     api_key=os.getenv('OPENAI_API_KEY')
+    # )
 
+    genai.configure(api_key = os.getenv('GEMINI_API_KEY'))
+    client = genai.GenerativeModel('gemini-pro')
+    
     ft = Preprocess(client=client, out_dir=output_directory)
     res = ft.loadmap_sumstats_table(file_path, verbose=False)
     if res != 0:

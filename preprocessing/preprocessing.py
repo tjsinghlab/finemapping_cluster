@@ -3,6 +3,7 @@ import shutil
 import numpy as np
 import subprocess
 import openai
+import google.generativeai as genai
 import random
 import time
 import yaml
@@ -52,7 +53,7 @@ class Preprocess:
     DEFAULT_SIG_THRESHOLD = 5e-8
     DEFAULT_WINDOW = 5e5
     CHUNK_SIZE = 2e6
-    MAX_RETRIES = 4
+    MAX_RETRIES = 10
 
     def __init__(self, client, out_dir, **kwargs):
         """
@@ -82,7 +83,7 @@ class Preprocess:
         
         """
         self.client = client
-        self.out_dir = out_dir
+        self.out_dir = os.path.expanduser(out_dir)
         self.desired_columns_dict = kwargs['desired_columns_dict'] \
                                     if 'desired_columns_dict' in kwargs \
                                     else Preprocess.DEFAULT_SUMSTATS_COLS
@@ -154,7 +155,7 @@ class Preprocess:
             My sequence:    "{desired_columns_str}"
             GWAS file:      "snp,chr,bp,id,maf,noncoding_snp,effect_snp,pval_afr,pval_eur,pval_cas,beta,standard_error"
 
-            Mapping:        "chr,bp,NA,NA,beta,standard_error,pval_{self.ancestry.lower()},NA"
+            Mapping:        "chr,bp,effect_snp,noncoding_snp,beta,standard_error,pval_{self.ancestry.lower()},NA"
             Notes:
                 chromosome ->  chr: Chromosome number.
                 position  ->  bp: BP stands for base pair,which corresponds to the position of the SNP.
@@ -180,35 +181,52 @@ class Preprocess:
         if 'print' in kwargs and kwargs['print']:
             print(query)
         
+        try:
+            model_gemini = self.client.model_name == "models/gemini-pro"
+        except:
+            model_gemini = False
+
         retries = 0
         while retries < Preprocess.MAX_RETRIES:
             try:
-                # Attempt to make the API request
-                completion = self.client.chat.completions.create(
-                    model="gpt-4o",
-                    messages=[
-                        {"role": "system", "content": "You are a helpful assistant."},
-                        {"role": "user", "content": query}
-                    ]
-                )
 
-                # Process the response
-                filtered_ordered_cols = completion.choices[0].message.content.split(',')
-                return filtered_ordered_cols
+                if model_gemini:
+                    # GEMINI
+                    completion = self.client.generate_content(query).candidates[0].content.parts[0].text.split(',')
+                    # print(completion)
 
-            except openai.RateLimitError as e:
+                    # verification = """
+                    #     Ensure that each column in {completion} (other than NA) exactly matches a column in:  {actual_columns_str}.
+                    #     If necessary, return a modified version of {completion} that is a comma separated list. Don't return any other text.
+                    # """
+                    # completion = self.client.generate_content(verification).candidates[0].content.parts[0].text.split(',')
+                    # print(completion)
+
+                    return completion
+                 
+                else:
+                    # GPT
+                    completion = self.client.chat.completions.create(
+                        model="gpt-4o",
+                        messages=[
+                            {"role": "system", "content": "You are a helpful assistant."},
+                            {"role": "user", "content": query}
+                        ]
+                    )
+
+                    # Process the response
+                    filtered_ordered_cols = completion.choices[0].message.content.split(',')
+                    return filtered_ordered_cols
+
+            except Exception as e:
                 # Handle rate limit error
                 print(f"Rate limit exceeded: {e}")
                 retries += 1
                 # Exponential backoff with some jitter
-                delay = (2 ** retries) + random.uniform(0, 1)
+                delay = (2 ** retries) + random.uniform(60, 70)
                 print(f"Retrying in {delay:.2f} seconds...")
                 time.sleep(delay)
 
-            except Exception as e:
-                # Handle other exceptions
-                print(f"An error occurred: {e}")
-                break
 
         print("Max retries exceeded.")
         return None
@@ -235,10 +253,10 @@ class Preprocess:
                 gpt_output[2] = gpt_output[3]
                 gpt_output[3] = supposed_ea
 
-        if supposed_ea == 'allele1' or supposed_ea == 'allele2' or supposed_ea == 'allele0':
+        if supposed_ea.lower() == 'allele1' or supposed_ea.lower() == 'allele2' or supposed_ea.lower() == 'allele0':
             gpt_output[2] = 'NA'
 
-        return gpt_output
+        return [x.strip() for x in gpt_output]
     
     def remap_dataframe(self, df : pd.DataFrame, name_mappings : dict, cols_in_order : list) -> pd.DataFrame:
         """
@@ -363,7 +381,24 @@ class Preprocess:
         sumstats_df = df[(abs(df['beta']) < np.inf) & (abs(df['beta']) > 0)]
         sumstats_df.reset_index(drop=True, inplace=True)
         return sumstats_df
-    
+
+    def get_columns(self, dataset_path : str) -> list:
+        # Return column names in sumstats file
+        cols_df = pd.read_table(dataset_path, nrows=0)
+        input_cols = cols_df.columns.tolist()
+        return input_cols
+
+    def suggest_columns(self, dataset_path : str) -> list:
+        # Return column names in sumstats file
+        if self.client is None:
+            prints('Client must be set for GPT integration.')
+            return -1
+            
+        ## Map column names using GPT
+        gpt_output = self.ask_sumstats_col_order(self.get_columns(dataset_path), print=False)
+        sumstats_mapped_columns = self.gpt_qc(gpt_output)[:-1] # TODO: check if last column needed to fill in info
+        return sumstats_mapped_columns
+
     def loadmap_sumstats_table(self, dataset_path, **kwargs) -> int:
         """
         Loads and maps the summary statistics file to the expected column order for the finemapping pipeline.
@@ -375,12 +410,15 @@ class Preprocess:
                 Additional arguments:
                     verbose : bool, optional
                         If True, print verbose output (default is False).
+                    manual_columns : list, optional
+                        If list provided, GPT integration will be avoided and the columns list will
+                        follow the selection of the list provided.
 
         Returns:
             int -> zero on success, != 0 on failure
 
         """
-        self.dataset_path = dataset_path
+        self.dataset_path = os.path.expanduser(dataset_path)
         v = True if ('verbose' in kwargs and kwargs['verbose']) else False
 
         ## Get the base filename
@@ -437,24 +475,35 @@ class Preprocess:
         input_cols = cols_df.columns.tolist()
         self.input_cols = input_cols
 
-        ## Map column names using GPT
-        gpt_output = self.ask_sumstats_col_order(input_cols, print=False)
-        sumstats_mapped_columns = self.gpt_qc(gpt_output)[:-1] # TODO: check if last column needed to fill in info
-
-        ## Count NA's
-        ct = sum(1 for n in sumstats_mapped_columns if n == 'NA')
-
-        prints(f"Sumstat cols:\t{input_cols} ->\nGPT mapping:\t{sumstats_mapped_columns}")
-            
-        os.makedirs(self.out_dir, exist_ok=True)
-        with open(self.out_dir + '/column_mappings.log', 'a') as out:
-            fnout = filename if ct != 0 else f'{filename} *'
-            out.write(f"{fnout}\nUSR\t{input_cols}\nGPT\t{sumstats_mapped_columns}\n\n")
         
-        ## Don't process file if there are NAs
-        if ct != 0:
-            prints("GPT couldn't make out all the columns.")
-            return 2
+        mc = True if ('manual_columns' in kwargs and kwargs['manual_columns']) else False
+        if mc:
+            prints('Using manual columns:')
+            sumstats_mapped_columns = kwargs['manual_columns']
+            prints(sumstats_mapped_columns)
+        else:
+            if self.client is None:
+                prints('Client not set. Client needed to access GPT. Input manual_columns to proceed manually.')
+                return -1
+                
+            ## Map column names using GPT
+            gpt_output = self.ask_sumstats_col_order(input_cols, print=False)
+            sumstats_mapped_columns = self.gpt_qc(gpt_output)[:-1] # TODO: check if last column needed to fill in info
+
+            ## Count NA's
+            ct = sum(1 for n in sumstats_mapped_columns if n == 'NA')
+
+            prints(f"Sumstat cols:\t{input_cols} ->\nGPT mapping:\t{sumstats_mapped_columns}")
+                
+            os.makedirs(self.out_dir, exist_ok=True)
+            with open(self.out_dir + '/column_mappings.log', 'a') as out:
+                fnout = filename if ct != 0 else f'{filename} *'
+                out.write(f"{fnout}\nUSR\t{input_cols}\nGPT\t{sumstats_mapped_columns}\n\n")
+            
+            ## Don't process file if there are NAs
+            if ct != 0:
+                prints("GPT couldn't make out all the columns.")
+                return 2
     
         prints()
         
