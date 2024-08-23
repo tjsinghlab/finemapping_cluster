@@ -1,12 +1,15 @@
-import os, pandas as pd
+import os
 import shutil
-import numpy as np
 import subprocess
-import openai
-import google.generativeai as genai
 import random
 import time
 import yaml
+import pandas as pd
+import numpy as np
+
+import openai
+import google.generativeai as genai
+from google.api_core import exceptions as google_exceptions
 
 from cols import Cols
 
@@ -24,7 +27,7 @@ class Prints:
 
         if self.verbose:
             print(*args)
-        
+            
         with open(f'{self.out_dir}/{self.filename}.log', 'a') as f:
             print(*args, file=f)
 
@@ -96,6 +99,15 @@ class Preprocess:
                                         else Preprocess.DEFAULT_ANCESTRY
 
 
+    def __retry(self):
+        if self.retries >= Preprocess.MAX_RETRIES:
+            return
+        # Exponential backoff with some jitter
+        delay = (2 ** self.retries) + random.uniform(60, 70)
+        print(f"Retrying in {delay:.2f} seconds...")
+        time.sleep(delay)
+        self.retries += 1
+        
     def ask_sumstats_col_order(self, actual_columns : list, **kwargs) -> list:
         """
         Compares the given file column names to the expected fields and order.
@@ -186,8 +198,8 @@ class Preprocess:
         except:
             model_gemini = False
 
-        retries = 0
-        while retries < Preprocess.MAX_RETRIES:
+        self.retries = 0
+        while self.retries < self.MAX_RETRIES:
             try:
 
                 if model_gemini:
@@ -218,20 +230,44 @@ class Preprocess:
                     filtered_ordered_cols = completion.choices[0].message.content.split(',')
                     return filtered_ordered_cols
 
-            except Exception as e:
+            except (ValueError, google_exceptions.GoogleAPICallError) as e:
+                if "No API_KEY or ADC found" in str(e):
+                    print("API Key Error: No API_KEY or ADC found. Please set up your API key.")
+                    print("You can set it by:")
+                    print("1. Setting the GOOGLE_API_KEY environment variable, or")
+                    print("2. Using genai.configure(api_key=your_api_key) in your code.")
+                    self.retries = self.MAX_RETRIES + 1
+                    break
+                
+            except openai.AuthenticationError as e:
+                print("Authentication Error: Invalid or missing API key.")
+                print("Please ensure you have set your OpenAI API key correctly.")
+                print("You can set it by:")
+                print("1. Setting the OPENAI_API_KEY environment variable, or")
+                print("2. Passing it directly to the OpenAI client: OpenAI(api_key='your-api-key')")
+                self.retries = self.MAX_RETRIES + 1
+                break
+                
+            except google_exceptions.RetryError as e:
                 # Handle rate limit error
                 print(f"Rate limit exceeded: {e}")
-                retries += 1
-                # Exponential backoff with some jitter
-                delay = (2 ** retries) + random.uniform(60, 70)
-                print(f"Retrying in {delay:.2f} seconds...")
-                time.sleep(delay)
-
-
-        print("Max retries exceeded.")
+                self.__retry()
+            
+            except openai.RateLimitError as e:
+                print(f"Rate limit exceeded: {e}")
+                self.__retry()
+                
+            except Exception as e:
+                # Handle other unexpected errors
+                print(f"An unexpected error occurred: {e}")
+                self.__retry()
+                
+        if self.retries >= self.MAX_RETRIES:
+            print("Max retries exceeded.")
+            
         return None
 
-    def gpt_qc(self, gpt_output):
+    def gpt_qc(self, gpt_output : list) -> list:
         """
         Checks the GPT output for common errors and corrects them.
         If the effect allele is not mentioned in the output, the function assumes that the effect allele is allele1.
@@ -253,7 +289,14 @@ class Preprocess:
                 gpt_output[2] = gpt_output[3]
                 gpt_output[3] = supposed_ea
 
-        if supposed_ea.lower() == 'allele1' or supposed_ea.lower() == 'allele2' or supposed_ea.lower() == 'allele0':
+        if supposed_ea.lower() in [
+                'allele1',
+                'allele2',
+                'allele0',
+                'a1',
+                'a2',
+                'a0'
+            ]:
             gpt_output[2] = 'NA'
 
         return [x.strip() for x in gpt_output]
@@ -279,21 +322,45 @@ class Preprocess:
 
         Example:
         -------
-        > df = pd.DataFrame({'a': [1, 2, 3], 'b': [4, 5, 6], 'c': [7, 8, 9]})
-        > name_mappings = {'a': 'x', 'b': 'y', 'c': 'z'}
-        > cols_in_order = ['z', 'y', 'x']
-        > remap_dataframe(df, name_mappings, cols_in_order)
-            z  y  x    
-        0  7  4  1
-        1  8  5  2
-        2  9  6  3
+        > df = pd.DataFrame({'REF': [A, T, C], 'ALT': [G, G, A], 'PVAL': [0.7, 0.08, 0.009]})
+
+           REF ALT PVAL    
+        0  A  G  0.7
+        1  T  G  0.08
+        2  C  A  0.009
+        3  NA A  NA
+
+        > name_mappings = {'REF': 'allele2', 'ALT': 'allele1', 'PVAL': 'pval'}
+        > df.rename(columns=name_mappings, inplace=True)              # rename columns
+
+           allele2 allele1 pval    
+        0  A  G  0.7
+        1  T  G  0.08
+        2  C  A  0.009
+        3  NA A  NA
+
+        > cols_in_order = ['allele1', 'allele2', 'pval']
+        > df_rearranged = df[cols_in_order].copy()                    # rearrange columns
+
+           allele1 allele2 pval    
+        0  G  A  0.7
+        1  G  T  0.08
+        2  A  C  0.009
+        3  A  NA NA
+        
+        > df_rearranged.dropna(subset=cols_in_order, inplace=True)
+        
+           allele1 allele2 pval    
+        0  G  A  0.7
+        1  G  T  0.08
+        2  A  C  0.009
         """
         df.rename(columns=name_mappings, inplace=True)              # rename columns
         df_rearranged = df[cols_in_order].copy()                    # rearrange columns
         df_rearranged.dropna(subset=cols_in_order, inplace=True)    # drop rows with NA in any column
         return df_rearranged
 
-    def sort_input_file(self, sumstats_mapped_columns) -> str:
+    def sort_input_file(self, sumstats_mapped_columns : list) -> str:
         """
         Sorts the input file by chromosome and position columns.
         
@@ -348,7 +415,7 @@ class Preprocess:
         return sorted_input_file
     
     @staticmethod
-    def check_allele(s):
+    def check_allele(s : str) -> str | None:
         """
         Checks if the input string is a valid allele.
         If the input is not a string or has length different from 1, returns np.nan.
@@ -382,23 +449,85 @@ class Preprocess:
         sumstats_df.reset_index(drop=True, inplace=True)
         return sumstats_df
 
-    def get_columns(self, dataset_path : str) -> list:
-        # Return column names in sumstats file
-        cols_df = pd.read_table(dataset_path, nrows=0)
+    # def get_zipped_head(self, dataset_path : str) -> str:
+    #     res = self.__get_file_path_elements(dataset_path)
+    #     if res != 0:
+    #        return
+    #     res = subprocess.run(f'zcat {dataset_path} | head', capture_output=True, text=True, shell=True, check=True).stdout
+    #     headers = res.split(self.DELIM_MAPPINGS[self.ext1])
+    #     return headers
+        
+    def get_columns(self, dataset_path : str) -> list | None:
+        """
+        Return column names in sumstats file.
+        """
+        res = self.__get_file_path_elements(dataset_path)
+        if res != 0:
+            return None
+        
+        cols_df = pd.read_table(dataset_path, sep=self.DELIM_MAPPINGS[self.ext1], nrows=0)
         input_cols = cols_df.columns.tolist()
         return input_cols
 
-    def suggest_columns(self, dataset_path : str) -> list:
-        # Return column names in sumstats file
+    def suggest_columns(self, dataset_path : str) -> list | None:
+        """ 
+        Suggest column names in sumstats file using GPT.
+        """
         if self.client is None:
             prints('Client must be set for GPT integration.')
             return -1
             
         ## Map column names using GPT
         gpt_output = self.ask_sumstats_col_order(self.get_columns(dataset_path), print=False)
-        sumstats_mapped_columns = self.gpt_qc(gpt_output)[:-1] # TODO: check if last column needed to fill in info
-        return sumstats_mapped_columns
+        if gpt_output:
+            sumstats_mapped_columns = self.gpt_qc(gpt_output)[:-1] # TODO: check if last column needed to fill in info
+            return sumstats_mapped_columns
+        return None
 
+    def __get_file_path_elements(self, dataset_path : str) -> int:
+
+        # Get absolute dataset path
+        self.dataset_path = os.path.expanduser(dataset_path)
+
+        # Get the base filename
+        filename_with_ext = os.path.basename(dataset_path)
+
+        # Split the filename and extension
+        filename, ext1 = os.path.splitext(filename_with_ext)
+
+        # Read in column names
+        # Handle the case for double extension (e.g., .txt.gz)
+        if ext1 == '.gz':
+            filename, ext2 = os.path.splitext(filename)
+            ext_full = ext2 + ext1
+            tmp = ext2
+            ext2 = ext1
+            ext1 = tmp
+        else:
+            ext_full = ext1
+            ext2 = None
+
+        # Handle .sumstats ext
+        prev_f = filename
+        filename, ext0 = os.path.splitext(filename)
+        if ext0 == '.sumstats':
+            ext_full = ext0 + ext_full
+        else:
+            filename = prev_f
+
+        self.ext1 = ext1
+        self.ext2 = ext2
+        self.ext_full = ext_full
+        self.filename = filename
+        self.filename_with_ext = filename_with_ext
+
+        dm_keys = self.DELIM_MAPPINGS.keys()
+        if ext1 not in dm_keys and ext1 != '.gz':
+            prints(f"Only supports {dm_keys} (+ .gz)")
+            return 1
+
+        return 0
+        
     def loadmap_sumstats_table(self, dataset_path, **kwargs) -> int:
         """
         Loads and maps the summary statistics file to the expected column order for the finemapping pipeline.
@@ -418,63 +547,22 @@ class Preprocess:
             int -> zero on success, != 0 on failure
 
         """
-        self.dataset_path = os.path.expanduser(dataset_path)
         v = True if ('verbose' in kwargs and kwargs['verbose']) else False
-
-        ## Get the base filename
-        filename_with_ext = os.path.basename(dataset_path)
-
-        ## Split the filename and extension
-        filename, ext1 = os.path.splitext(filename_with_ext)
-
-
-
-        ## Read in column names
-        ## Handle the case for double extension (e.g., .txt.gz)
-        if ext1 == '.gz':
-            filename, ext2 = os.path.splitext(filename)
-            ext_full = ext2 + ext1
-            tmp = ext2
-            ext2 = ext1
-            ext1 = tmp
-        else:
-            ext_full = ext1
-            ext2 = None
-
-
-        ## Handle .sumstats ext
-        prev_f = filename
-        filename, ext0 = os.path.splitext(filename)
-        if ext0 == '.sumstats':
-            ext_full = ext0 + ext_full
-        else:
-            filename = prev_f
-            # self.sumstats_df = None
-            # print('[loadmap_sumstats_table] Skipping: Not a sumstats file (.sumstats.<ext>[.gz]).')
-            # return
         
-        prints = Prints(v, out_dir = self.out_dir, filename = filename)
+        res = self.__get_file_path_elements(dataset_path)
+        if res != 0:
+            return
+
+        prints = Prints(v, out_dir = self.out_dir, filename = self.filename)
         self.prints = prints
 
-        prints(f'found {filename_with_ext}')
+        prints(f'found {self.filename_with_ext}')
         prints()
-
-        self.ext1 = ext1
-        self.ext2 = ext2
-        self.ext_full = ext_full
-        self.filename = filename
-
-        dm_keys = Preprocess.DELIM_MAPPINGS.keys()
-        if ext1 not in dm_keys and ext1 != '.gz':
-            prints(f"Only supports {dm_keys} (+ .gz)")
-            return 1
 
         # ChatGPT integration
         ## Determine column names in sumstats file
-        cols_df = pd.read_table(dataset_path, nrows=0)
-        input_cols = cols_df.columns.tolist()
+        input_cols = self.get_columns(dataset_path)
         self.input_cols = input_cols
-
         
         mc = True if ('manual_columns' in kwargs and kwargs['manual_columns']) else False
         if mc:
@@ -497,22 +585,22 @@ class Preprocess:
                 
             os.makedirs(self.out_dir, exist_ok=True)
             with open(self.out_dir + '/column_mappings.log', 'a') as out:
-                fnout = filename if ct != 0 else f'{filename} *'
+                fnout = self.filename if ct != 0 else f'{self.filename} *'
                 out.write(f"{fnout}\nUSR\t{input_cols}\nGPT\t{sumstats_mapped_columns}\n\n")
             
-            ## Don't process file if there are NAs
+            # Don't process file if there are NAs
             if ct != 0:
                 prints("GPT couldn't make out all the columns.")
                 return 2
     
         prints()
-        
+
         # Get mappings
         try:
             sorted_input_file = self.sort_input_file(sumstats_mapped_columns)
         except:
             prints('Failed to sort input file.')
-            return 3
+            return 42
 
         old_new_column_mappings = {
             s: e 
@@ -522,19 +610,19 @@ class Preprocess:
         cols_in_order = [c for c in self.desired_columns if c in old_new_column_mappings.values()]
 
         ## Load in dataframe
-        save_sumstats_as = os.path.join(self.out_dir, filename) + f'_preprocessed.tsv' # {ext_full}
+        save_sumstats_as = os.path.join(self.out_dir, self.filename) + f'_preprocessed.tsv' # {ext_full}
         mode = 'w'
         header = True
 
-        prints(input_cols)
+        prints(self.input_cols)
         prints(sumstats_mapped_columns)
 
         for chunk in pd.read_table(
                 sorted_input_file,
-                sep=self.DELIM_MAPPINGS[ext1],
+                sep=self.DELIM_MAPPINGS[self.ext1],
                 usecols=sumstats_mapped_columns,
                 dtype=self.desired_columns_dict,
-                chunksize=Preprocess.CHUNK_SIZE
+                chunksize=self.CHUNK_SIZE
             ):
             # prints(f'loaded in {df.shape[0]} SNPs')
             prints('='*15)
@@ -597,7 +685,7 @@ class Preprocess:
             
         self.save_sumstats_as = save_sumstats_as
         
-        prints(f'Saved reformatted sumstats file to: {filename}_preprocessed.tsv')
+        prints(f'Saved reformatted sumstats file to: {self.filename}_preprocessed.tsv')
         prints()
 
         return 0
