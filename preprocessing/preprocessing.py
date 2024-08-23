@@ -359,6 +359,86 @@ class Preprocess:
         df_rearranged = df[cols_in_order].copy()                    # rearrange columns
         df_rearranged.dropna(subset=cols_in_order, inplace=True)    # drop rows with NA in any column
         return df_rearranged
+    
+
+    def __copy_file(self, source_path : str, destination_path : str) -> bool:
+        """
+        Copy a file from source to destination with error checking.
+
+        :param source_path: Path to the source file
+        :param destination_path: Path where the file should be copied
+        :return: True if successful, False otherwise
+        """
+        try:
+            # Check if source file exists
+            if not os.path.exists(source_path):
+                print(f"Error: Source file does not exist: {source_path}")
+                return False
+
+            # Check if source is a file (not a directory)
+            if not os.path.isfile(source_path):
+                print(f"Error: Source is not a file: {source_path}")
+                return False
+
+            # Check if we have read permissions on the source file
+            if not os.access(source_path, os.R_OK):
+                print(f"Error: No read permission for source file: {source_path}")
+                return False
+
+            # Check if destination directory exists, if not, try to create it
+            dest_dir = os.path.dirname(destination_path)
+            if not os.path.exists(dest_dir):
+                os.makedirs(dest_dir)
+
+            # Check if destination file already exists, if so, try to delete it
+            if os.path.exists(destination_path):
+                try:
+                    os.remove(destination_path)
+                except PermissionError:
+                    print(f"Permission denied: Unable to delete {destination_path}")
+                except Exception as e:
+                    print(f"An error occurred: {e}")
+
+            # Perform the copy operation
+            shutil.copy(source_path, destination_path)
+
+            # Verify that the copy was successful
+            if os.path.exists(destination_path) and os.path.getsize(source_path) == os.path.getsize(destination_path):
+                print(f"Successfully copied {source_path} to {destination_path}")
+                return True
+            else:
+                print(f"Error: Copy verification failed for {destination_path}")
+                return False
+
+        except PermissionError:
+            print(f"Error: Permission denied when copying {source_path} to {destination_path}")
+        except shutil.SameFileError:
+            print(f"Error: Source and destination are the same file: {source_path}")
+        except IOError as e:
+            print(f"I/O error occurred: {e}")
+        except Exception as e:
+            print(f"Unexpected error occurred: {e}")
+
+        return False
+    
+    def __run_command(self, command):
+        """
+        Run a shell command and handle potential errors.
+        
+        :param command: The shell command to run
+        :return: True if successful, False otherwise
+        """
+        prints = self.prints
+        try:
+            subprocess.run(command, shell=True, check=True, capture_output=True, text=True)
+            return True
+        except subprocess.CalledProcessError as e:
+            prints(f"Command failed with error: {e}")
+            prints(f"Command output: {e.output}")
+            return False
+        except Exception as e:
+            prints(f"An unexpected error occurred: {e}")
+            return False
 
     def sort_input_file(self, sumstats_mapped_columns : list) -> str:
         """
@@ -389,30 +469,71 @@ class Preprocess:
 
         # Create a temporary copy of the compressed input file in the output directory
         temp_copy_path = os.path.join(self.out_dir, self.filename) + self.ext_full
-        shutil.copy(self.dataset_path, temp_copy_path)
+
+        return_val = self.__copy_file(self.dataset_path, temp_copy_path)
+        if not return_val:
+            prints("Failed to copy file")
+            return -1
 
         # Decompress the temporary file
         if self.ext2 == '.gz':
-            prints(f"Decompressing temporary copy {temp_copy_path}")
-            subprocess.run(f"gzip -d {temp_copy_path}", shell=True, check=True)
             temp_file = os.path.join(self.out_dir, self.filename) + self.ext1
+            # Check if decompressed file already exists, if so, try to delete it
+            if os.path.exists(temp_file):
+                try:
+                    os.remove(temp_file)
+                except PermissionError:
+                    prints(f"Permission denied: Unable to delete {temp_file}")
+                    return -1
+                except Exception as e:
+                    prints(f"An error occurred: {e}")
+                    return -1
+
+            prints(f"Decompressing temporary copy {temp_copy_path}")
+            if not self.__run_command(f"gzip -d {temp_copy_path}"):
+                prints("Failed to decompress file")
+                # Handle the error (e.g., clean up, exit)
+                return -1
+            
         else:
             temp_file = temp_copy_path
 
         # Sort the decompressed file while keeping the header
         sorted_input_file = os.path.join(self.out_dir, self.filename) + '_sorted' + self.ext1
-
+    
         # Extract the header
-        subprocess.run(f"head -n 1 {temp_file} > {sorted_input_file}", shell=True, check=True)
+        if not self.__run_command(f"head -n 1 {temp_file} > {sorted_input_file}"):
+            prints("Failed to extract header")
+            # Handle the error (e.g., clean up, exit)
+            return -1
 
+        unsorted_head = subprocess.run(f"head -n 1 {temp_file}", shell=True, check=True, capture_output=True, text=True).stdout
+        unsorted_head_list = unsorted_head.strip().split(self.DELIM_MAPPINGS[self.ext1])
+        prints("File head:", unsorted_head_list)
+        if len(unsorted_head_list) == 1:
+            prints(f"Warning: Your file ends in {self.ext1} but are you sure your input file is separated correctly?")
+            
         # Sort the rest of the file
-        subprocess.run(f"tail -n +2 {temp_file} | sort -k{chrom_col_idx},{chrom_col_idx}n -k{position_col_idx},{position_col_idx}n >> {sorted_input_file}", shell=True, check=True)
+        sort_command = f"tail -n +2 {temp_file} | sort -k{chrom_col_idx},{chrom_col_idx}n -k{position_col_idx},{position_col_idx}n >> {sorted_input_file}"
+        if not self.__run_command(sort_command):
+            prints("Failed to sort the file")
+            # Handle the error
+            return -1
 
         # Clean up temporary file
-        os.remove(temp_file)
+        try:
+            os.remove(temp_file)
+            prints(f"Successfully removed temporary file: {temp_file}")
+        except FileNotFoundError:
+            prints(f"Warning: Temporary file not found: {temp_file}")
+        except PermissionError:
+            prints(f"Error: Permission denied when trying to remove {temp_file}")
+        except Exception as e:
+            prints(f"An unexpected error occurred while removing {temp_file}: {e}")
 
         prints(f"Sorted file saved to {sorted_input_file}")
-        return sorted_input_file
+        self.sorted_input_file = sorted_input_file
+        return 0
     
     @staticmethod
     def check_allele(s : str) -> str | None:
@@ -474,7 +595,7 @@ class Preprocess:
         Suggest column names in sumstats file using GPT.
         """
         if self.client is None:
-            prints('Client must be set for GPT integration.')
+            print('Client must be set for GPT integration.')
             return -1
             
         ## Map column names using GPT
@@ -523,7 +644,7 @@ class Preprocess:
 
         dm_keys = self.DELIM_MAPPINGS.keys()
         if ext1 not in dm_keys and ext1 != '.gz':
-            prints(f"Only supports {dm_keys} (+ .gz)")
+            print(f"Only supports {dm_keys} (+ .gz)")
             return 1
 
         return 0
@@ -596,9 +717,7 @@ class Preprocess:
         prints()
 
         # Get mappings
-        try:
-            sorted_input_file = self.sort_input_file(sumstats_mapped_columns)
-        except:
+        if self.sort_input_file(sumstats_mapped_columns) != 0:
             prints('Failed to sort input file.')
             return 42
 
@@ -618,7 +737,7 @@ class Preprocess:
         prints(sumstats_mapped_columns)
 
         for chunk in pd.read_table(
-                sorted_input_file,
+                self.sorted_input_file,
                 sep=self.DELIM_MAPPINGS[self.ext1],
                 usecols=sumstats_mapped_columns,
                 dtype=self.desired_columns_dict,
