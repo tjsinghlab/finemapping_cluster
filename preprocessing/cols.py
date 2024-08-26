@@ -45,7 +45,7 @@ class Cols:
         return self.columns.get(column_name, None)
 
 if __name__ == "__main__":
-    cols = Cols('header.yaml')
+    cols = Cols('config.yaml')
 
     for column, dtype in cols.columns.items():
         print(f"{column}: {dtype}")

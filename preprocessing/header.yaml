@@ -1,9 +1,0 @@
-columns:
-  chromosome: str
-  position: int32
-  allele1: str
-  allele2: str
-  beta: float64
-  se: float64
-  pval: float64
-  odds_ratio: float64

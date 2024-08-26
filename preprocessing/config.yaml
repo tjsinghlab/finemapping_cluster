@@ -1,0 +1,19 @@
+columns:
+  chromosome: str
+  position: int32
+  allele1: str
+  allele2: str
+  beta: float64
+  se: float64
+  pval: float64
+  odds_ratio: float64
+powerlift:
+  db_path: /gpfs/commons/home/sfriedman/rsid.db
+  genome_build: hg19
+  chunk_size: 10000
+  columns:
+    rsid: rsid_pl
+    chrom: chromosome_pl
+    pos: position_pl
+    ref: ref_pl
+    alt: alt_pl
