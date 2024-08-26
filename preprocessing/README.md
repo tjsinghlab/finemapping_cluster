@@ -194,7 +194,9 @@ Average queries per second: 437.7
 
 If utilizing 16 cores:
 
-$$= 16 \text{ cores} * 437.7 \text{ queries / second} = \textbf{approx. 7,000 queries / second}$$
+$$ = 16 * 437.7 \text{ queries/sec} $$
+
+$$ \approx 7,000 \text{ queries/sec}$$
 
 
 ## Example implementation
