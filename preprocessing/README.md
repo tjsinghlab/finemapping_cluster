@@ -178,3 +178,49 @@ export PREPROC_FILEPATHS="~/filepaths.txt" # however you named your filepaths fi
 3. Now run with `sbatch submit_preprocessing.sh`
 - Use `squeue -u <your-username>` for updates.
 - Use `scancel <job-id>` to cancel.
+
+
+# PowerLift
+
+Example implementation:
+
+```{bash}
+import powerlift as pl
+
+lift = pl.PowerLift(
+        config_path = 'config.yaml', 
+        output_dir = '/gpfs/commons/home/sfriedman/outest'
+    )
+
+lift.populate_rsids(
+    input_file = '/gpfs/commons/home/sfriedman/GCST90092944_buildGRCh37.tsv.gz', 
+    rsid_column = 'variant_id'
+)
+```
+
+```{bash}
+2024-08-25 22:34:26,941 - INFO - Utilizing temporary directory /scratch/tmp0c4p06po
+Processing Chunks: 100%|████████████████████████████████████████████████| 10/10 [00:08<00:00,  1.19it/s]
+Merging Files: 100%|███████████████████████████████████████████████████| 10/10 [00:00<00:00, 567.96it/s]
+2024-08-25 22:34:35,926 - INFO - Number of NULL rsid mappings: 0
+2024-08-25 22:34:35,926 - INFO - Processed data has been saved to /gpfs/commons/home/sfriedman/outest/GCST90092944_buildGRCh37_powerlift.tsv
+```
+
+## `config.yaml` is a file that must contain the following fields:
+- **db_path** is the path to your SQLite db file. Learn how to create this file here --> `rsidb_construction.md`.
+- **genome_build** can either be 'hg19' or 'hg38'
+- **chunk_size** specifies how many chunks to break your input file down into.
+- **columns** specifies the name for each of the column headers constructed by PowerLift. Feel free to change their names per your preferences.
+
+```{bash}
+powerlift:
+  db_path: /gpfs/commons/home/sfriedman/rsid.db
+  genome_build: hg19
+  chunk_size: 10000
+  columns:
+    rsid: rsid_pl
+    chrom: chromosome_pl
+    pos: position_pl
+    ref: ref_pl
+    alt: alt_pl
+```
