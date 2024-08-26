@@ -1,5 +1,6 @@
 import sqlite3
 import yaml
+import timeit
 
 class RSIdb:
     def __init__(self, db_path):
@@ -50,7 +51,28 @@ class RSIdb:
         return self.query(query_str, (rsid_low, rsid_high))
 
     def lift_rsid(self, rsid, build="hg19", **kwargs):
-        return self.lift_rsid_range(rsid, rsid, build, **kwargs)
+        if build not in ["hg19", "hg38"]:
+            raise ValueError("Invalid build. Please choose either 'hg19' or 'hg38'.")
+
+        # Get the integer in the rsid, rs0001234 -> 1234
+        try:
+            rsid = int(rsid[2:])
+        except ValueError:
+            raise ValueError("Invalid rsid format. Please ensure it starts with 'rs' followed by digits.")
+
+        query_str = f"""
+            SELECT ID, chromosome, POS, REF, ALT
+            FROM {build}
+            WHERE rsid == ?;
+        """
+
+        verbose = kwargs.get('verbose', False)
+        if verbose:
+            print("Executing query:")
+            print(query_str)
+            print("With parameters:", (rsid,))
+
+        return self.query(query_str, (rsid,))
 
     def close(self):
         if self.cursor:
@@ -62,10 +84,19 @@ if __name__ == "__main__":
     with open("config.yaml", "r") as file:
         config = yaml.safe_load(file)
 
-    db_path = config['database']['path']
+    db_path = config['powerlift']['db_path']
     db = RSIdb(db_path)
-    results = db.lift_rsid_range(rsid_low="rs0000001", rsid_high="rs0001000", build="hg19", verbose=False)
-    # print(results)
-    results = db.lift_rsid(rsid="rs982", build="hg19", verbose=True)
-    print(results)
+
+    def benchmark_function():
+        for _ in range(10000):
+            db.lift_rsid(rsid="rs982", build="hg19", verbose=False)
+
+    # Run the benchmark
+    number_of_runs = 3
+    execution_time = timeit.timeit(benchmark_function, number=number_of_runs)
+
+    print(f"Total execution time for {number_of_runs} run(s) of 10,000 queries: {execution_time:.4f} seconds")
+    print(f"Average time per run: {execution_time/number_of_runs:.4f} seconds")
+    print(f"Average queries per second: {10000/(execution_time/number_of_runs):.1f}")
+
     db.close()

@@ -696,6 +696,9 @@ class Preprocess:
             return sumstats_mapped_columns
         return None
     
+    def transform_or_to_beta(self, dataset_path, or_column, beta_column):
+
+
     def loadmap_sumstats_table(self, dataset_path, **kwargs) -> None:
         """
         Loads and maps the summary statistics file to the expected column order for the finemapping pipeline.

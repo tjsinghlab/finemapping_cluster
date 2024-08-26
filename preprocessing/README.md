@@ -184,7 +184,20 @@ export PREPROC_FILEPATHS="~/filepaths.txt" # however you named your filepaths fi
 
 PowerLift is a tool for populating **chromosome** and **position** values from **RSID**. User can select either GRCh37/hg19 or GRCh38/hg38 as the genome build (not both).
 
-Example implementation:
+## Benchmarking
+
+```
+Total execution time for 3 run(s) of 10,000 queries: 68.5416 seconds
+Average time per run: 22.8472 seconds
+Average queries per second: 437.7
+```
+
+If utilizing 16 cores:
+
+$$= 16 \text{ cores} * 437.7 \text{ queries / second} = \textbf{approx. 7,000 queries / second}$$
+
+
+## Example implementation
 
 ```{bash}
 import powerlift as pl
