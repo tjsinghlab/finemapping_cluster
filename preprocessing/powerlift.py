@@ -56,7 +56,7 @@ class PowerLift:
             return yaml.safe_load(file)
 
     @log
-    def populate_rsids(self, input_file, rsid_column):
+    def lift_over(self, input_file, rsid_column):
         self.input_file = input_file
         self.rsid_column = rsid_column
         self.cmprsn = 'gzip' if pathutils.is_gzip(input_file) else None
@@ -254,4 +254,4 @@ if __name__ == "__main__":
 
     # Main execution
     pl = PowerLift(config_path = 'config.yaml', output_dir = '/gpfs/commons/home/sfriedman/outest')
-    pl.populate_rsids(input_file = '/gpfs/commons/home/sfriedman/GCST90093040_buildGRCh37.tsv', rsid_column = 'variant_id')
+    pl.lift_over(input_file = '/gpfs/commons/home/sfriedman/GCST90093040_buildGRCh37.tsv', rsid_column = 'variant_id')

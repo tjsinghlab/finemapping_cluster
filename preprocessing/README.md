@@ -182,19 +182,21 @@ export PREPROC_FILEPATHS="~/filepaths.txt" # however you named your filepaths fi
 
 # PowerLift
 
+PowerLift is a tool for populating **chromosome** and **position** values from **RSID**. User can select either GRCh37/hg19 or GRCh38/hg38 as the genome build (not both).
+
 Example implementation:
 
 ```{bash}
 import powerlift as pl
 
-lift = pl.PowerLift(
-        config_path = 'config.yaml', 
-        output_dir = '/gpfs/commons/home/sfriedman/outest'
+pow = pl.PowerLift(
+        config_path = 'config.yaml',            # your config file (see details below)
+        output_dir = '/your/output/directory'   # your output directory
     )
 
-lift.populate_rsids(
-    input_file = '/gpfs/commons/home/sfriedman/GCST90092944_buildGRCh37.tsv.gz', 
-    rsid_column = 'variant_id'
+pow.lift_over(
+    input_file = 'your/input/file.tsv.gz',      # your input file (.tsv|.txt|.csv|.tbl) / .gz
+    rsid_column = 'variant_id'                  # column name; col containing rsids
 )
 ```
 
