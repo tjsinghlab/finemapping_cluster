@@ -37,7 +37,7 @@ class RSIdb:
             raise ValueError("Invalid rsid range: rsid_low must be less than or equal to rsid_high.")
 
         query_str = f"""
-            SELECT ID, chromosome, POS, REF, ALT
+            SELECT ID, CHROM, POS, REF, ALT
             FROM {build}
             WHERE rsid >= ? AND rsid <= ?;
         """
@@ -61,7 +61,7 @@ class RSIdb:
             raise ValueError("Invalid rsid format. Please ensure it starts with 'rs' followed by digits.")
 
         query_str = f"""
-            SELECT ID, chromosome, POS, REF, ALT
+            SELECT ID, CHROM, POS, REF, ALT
             FROM {build}
             WHERE rsid == ?;
         """
@@ -87,16 +87,32 @@ if __name__ == "__main__":
     db_path = config['powerlift']['db_path']
     db = RSIdb(db_path)
 
-    def benchmark_function():
-        for _ in range(10000):
-            db.lift_rsid(rsid="rs982", build="hg19", verbose=False)
+    # def benchmark_function():
+    #     for _ in range(10000):
+    #         db.lift_rsid(rsid="rs982", build="hg19", verbose=False)
 
-    # Run the benchmark
-    number_of_runs = 3
-    execution_time = timeit.timeit(benchmark_function, number=number_of_runs)
+    # # Run the benchmark
+    # number_of_runs = 3
+    # execution_time = timeit.timeit(benchmark_function, number=number_of_runs)
 
-    print(f"Total execution time for {number_of_runs} run(s) of 10,000 queries: {execution_time:.4f} seconds")
-    print(f"Average time per run: {execution_time/number_of_runs:.4f} seconds")
-    print(f"Average queries per second: {10000/(execution_time/number_of_runs):.1f}")
+    # print(f"Total execution time for {number_of_runs} run(s) of 10,000 queries: {execution_time:.4f} seconds")
+    # print(f"Average time per run: {execution_time/number_of_runs:.4f} seconds")
+    # print(f"Average queries per second: {10000/(execution_time/number_of_runs):.1f}")
+
+    # open file and store the data as a list
+    with open("/gpfs/commons/home/sfriedman/projects/anne_liftover/zeng_rsids_GRCh38.tsv", "r") as file, open("/gpfs/commons/home/sfriedman/projects/anne_liftover/zeng_rsids_GRCh38_expanded.tsv", "w") as output:
+        next(file)
+        rsids = file.readlines()
+        rsids = [rsid.strip() for rsid in rsids]
+        print(rsids)
+        output.write("rsid\tchromosome\tpos\tpos\n")
+        for rsid in rsids:
+            res = db.lift_rsid(rsid, build="hg38", verbose=False)
+            if res:
+                sid, chromosome, pos, ref, alt = res[0]
+                output.write(f"{chromosome}:{pos}-{pos}\n")
+            else:
+                print(f"rsid {rsid} not found")
+    
 
     db.close()

@@ -1,79 +1,27 @@
-# RSID manipulations & lookup
+# RSID SQLite Database Construction
 
-Starting with file `GCF_000001405.25_slim.tsv` from Max-Drabkin:
-```
-CHROM POS ID REF ALT
-NC_000001.10 10001 rs1570391677 T A,C
-NC_000001.10 10002 rs1570391692 A C
-```
+Start with dbSNP files:
+[SNP Files](https://ftp.ncbi.nlm.nih.gov/snp/organisms/)
 
-## Separate CHROM into various components
-
-[HGVS Reference Sequence](https://hgvs-nomenclature.org/stable/background/refseq/)
-
-e.g., **NC_000001.10**: prefix (**NC**), chromosome number (**1**), version (**10**)
-```
-$ LC_ALL=C awk 'BEGIN {OFS="\t"}
-NR==1 {print $0, "prefix", "chromosome", "version"; next}
-{
-  split($1, a, "[_.]");
-  $0 = $0 OFS a[1] OFS a[2]+0 OFS a[3];
-  print
-}' GCF_000001405.25_slim.tsv > GCF_000001405.25_slim_expanded.tsv
+## Download files
+```{bash}
+wget -O hg19_00-All.vcf.gz \
+    https://ftp.ncbi.nlm.nih.gov/snp/organisms/human_9606_b151_GRCh37p13/VCF/00-All.vcf.gz  # GRCh37/hg19
+wget -O hg38_00-All.vcf.gz \
+    https://ftp.ncbi.nlm.nih.gov/snp/organisms/human_9606_b151_GRCh38p7/VCF/00-All.vcf.gz   # GRCh38/hg38
 ```
 
-```
-$ ls -lh GCF_000001405.25_slim_expanded.tsv
--rw-rw-r--  1 sfriedman nslab  51G Aug 24 22:33 GCF_000001405.25_slim_expanded.tsv
-$ head GCF_000001405.25_slim_expanded.tsv
-CHROM POS ID REF ALT prefix chromosome version
-NC_000001.10 10001 rs1570391677 T A,C NC 1 10
-NC_000001.10 10002 rs1570391692 A C NC 1 10
-```
+## Trim and show first few rows
+```{bash}
+$ zcat 00-All.vcf.gz | tail -n +57 | cut -f1-7 > GRCh38.tsv
 
-## Figure out which chr builds are represented in this file
-```
-$ awk '{print $NF}' GCF_000001405.25_slim_expanded.tsv | sort | uniq -c | sort -rn > version_counts.txt
-$ cat version_counts.txt 
-395532324 11  # GRCh38/hg38 genome assembly
-336060558 10  # GRCh37/hg19 genome assembly
-235738966 9
-59858844 13
-47427291 8
-32981289 1
-6496723 2
-4314669 3
-```
-
-## Break up big file into smaller ones per build
-```
-$ awk -F'\t' 'NR==1{header=$0; next} {print > "version_"$8".txt"} > END {for(f in FILENAME) print header > f}' GCF_000001405.25_slim_expanded.tsv
-```
-
-```
-$ ls -lh version_*.txt
--rw-rw-r--  1 sfriedman nslab  16G Aug 24 23:41 version_10.txt
--rw-rw-r--  1 sfriedman nslab  18G Aug 24 23:41 version_11.txt
--rw-rw-r--  1 sfriedman nslab 2.7G Aug 24 23:41 version_13.txt
--rw-rw-r--  1 sfriedman nslab 1.6G Aug 24 23:41 version_1.txt
--rw-rw-r--  1 sfriedman nslab 325M Aug 24 23:41 version_2.txt
--rw-rw-r--  1 sfriedman nslab 221M Aug 24 23:41 version_3.txt
--rw-rw-r--  1 sfriedman nslab 2.1G Aug 24 23:41 version_8.txt
--rw-rw-r--  1 sfriedman nslab  11G Aug 24 23:41 version_9.txt
-```
-
-## Sort the desired build files by RSID prior to writing to SQLite DB
-
-### GRCh37/hg19 genome assembly
-```
-$ head -n 1 GCF_000001405.25_slim_expanded.tsv > version_10_sorted.tsv
-$ LC_ALL=C sort -k3,3V <(tail -n +2 version_10.txt) >> version_10_sorted.tsv
-```
-
-### GRCh38/hg38 genome assembly
-```
-$ head -n 1 GCF_000001405.25_slim_expanded.tsv > version_11_sorted.tsv
-$ LC_ALL=C sort -k3,3V <(tail -n +2 version_11.txt) >> version_11_sorted.tsv
+$ head GRCh37.tsv 
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER
+1	10019	rs775809821	TA	T	.	.
+1	10039	rs978760828	A	C	.	.
+1	10043	rs1008829651	T	A	.	.
+1	10051	rs1052373574	A	G	.	.
+1	10051	rs1326880612	A	AC	.	.
 ```
 
 # Setup SQLite DB
@@ -82,52 +30,31 @@ $ LC_ALL=C sort -k3,3V <(tail -n +2 version_11.txt) >> version_11_sorted.tsv
 $ sqlite3 rsid.db
 ```
 
-### GRCh37/hg19 genome assembly
-```
--- Set the mode to tabs
-.mode tabs
-
--- Import the data
-.import /gpfs/commons/home/sfriedman/version_10_sorted.tsv hg19
-
--- Add integer rsid column
-ALTER TABLE hg19 ADD COLUMN rsid INTEGER;
-
-UPDATE hg19 SET rsid = CAST(SUBSTR(ID, 3) AS INTEGER) WHERE ID LIKE 'rs%';
-
--- Check schema
-.schema hg19
-
--- Create table index
-CREATE INDEX idx_hg19_rsid ON hg19 (rsid);
-
--- Try command of interest
-SELECT ID, chromosome, POS 
-FROM hg19 
-WHERE rsid >= 200000 AND rsid <= 210000;
-```
-
 ### GRCh38/hg38 genome assembly
+
+Replace `hg38` with `hg19` for GRCh37/hg19 build.
 ```
 -- Set the mode to tabs
 .mode tabs
 
 -- Import the data
-.import /gpfs/commons/home/sfriedman/version_11_sorted.tsv hg38
+.import /gpfs/commons/home/sfriedman/dbsnp/GRCh38.tsv hg38
 
--- Add integer rsid column
-ALTER TABLE hg38 ADD COLUMN rsid INTEGER;
-UPDATE hg38 SET rsid = CAST(SUBSTR(ID, 3) AS INTEGER) WHERE ID LIKE 'rs%';
+-- Update table names
+ALTER TABLE hg38 RENAME COLUMN "#CHROM" TO "CHROM";
+
+-- Add integer RSID column
+ALTER TABLE hg38 ADD COLUMN RSID INTEGER;
+UPDATE hg38 SET RSID = CAST(SUBSTR(ID, 3) AS INTEGER) WHERE ID LIKE 'rs%';
 
 -- Check schema
 .schema hg38
 
 -- Create table index
-CREATE INDEX idx_hg38_rsid ON hg38 (rsid);
+CREATE INDEX idx_hg38_rsid ON hg38 (RSID);
 
 -- Try command of interest
 SELECT ID, chromosome, POS 
-FROM hg38
-WHERE rsid >= 200000 AND rsid <= 200100;
+FROM hg38 
+WHERE rsid >= 200000 AND rsid <= 210000;
 ```
-

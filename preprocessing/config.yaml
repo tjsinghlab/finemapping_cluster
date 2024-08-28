@@ -8,7 +8,7 @@ columns:
   pval: float64
   odds_ratio: float64
 powerlift:
-  db_path: /gpfs/commons/home/sfriedman/rsid.db
+  db_path: /gpfs/commons/home/sfriedman/dbsnp/rsid.db
   genome_build: hg19
   chunk_size: 10000
   columns:
