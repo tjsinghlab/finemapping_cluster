@@ -59,10 +59,6 @@ save_ss_per_locus <- function(sumstats_name, df.sumstats, LOCUS, CHR, START, END
 }
 
 
-
-
-
-
 ## returns LD matrix for each locus, and corresponding sum stats, 
 ## modified so that beta corresponds to alt SNP from bim file 
 ## matches bim and sumstats using chr:pos:alt:ref
