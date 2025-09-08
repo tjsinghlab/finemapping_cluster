@@ -188,10 +188,13 @@ run_susie <- function(sumstats, LDmat, N_tot, N_cases, sumstats_name, ld_pop,  w
   
   dir.create(paste0("output/",sumstats_name,"/",ld_pop,"_", 
                     window_mb, "Mb/susie"))
-  phi <- N_cases/N_tot
-  
-  susie_output <- susie_rss(R = as.matrix(LDmat), n = N_tot, vary_y = 1/(phi*(1-phi)), bhat = sumstats$beta, shat = sumstats$se)
-  
+  if(is.na(N_cases)){
+    susie_output <- susie_rss(R = as.matrix(LDmat), n = N_tot, bhat = sumstats$beta, shat = sumstats$se)
+  }else{
+    phi <- N_cases/N_tot
+    susie_output <- susie_rss(R = as.matrix(LDmat), n = N_tot, vary_y = 1/(phi*(1-phi)), bhat = sumstats$beta, shat = sumstats$se)
+  }
+
   saveRDS(susie_output, file = paste0("output/",sumstats_name,"/", ld_pop, "_", 
                                        window_mb, "Mb/susie/", sumstats_name, "_", LDpanel, "_", 
                                        window_mb, "Mb_",locus,".rds"))
