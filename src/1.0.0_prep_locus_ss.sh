@@ -6,7 +6,7 @@
 
 #to submit:
 ##sbatch 1.0.0_prep_locus_ss.sh $path_to_lead_SNP $sumstats_name $path_to_sumstats $ld_pop $window_mb
-cd /gpfs/commons/groups/nygcfaculty/lappalainen_singh/finemapping_autoimmune
+cd /gpfs/commons/groups/nygcfaculty/lappalainen_singh/finemapping_cluster
 
 # Function to initialize Conda and activate an environment
 initialize_conda() {
@@ -55,7 +55,7 @@ sumstats_name=$2
 ld_pop=$4
 window_mb=$5
 
-proj_dir="/gpfs/commons/groups/nygcfaculty/lappalainen_singh/finemapping_autoimmune"
+proj_dir="/gpfs/commons/groups/nygcfaculty/lappalainen_singh/finemapping_cluster"
 ss_path="${proj_dir}/output/${sumstats_name}/${ld_pop}_${window_mb}Mb/ss/*.txt"
 
 #copy locus-specific SS files to cloud

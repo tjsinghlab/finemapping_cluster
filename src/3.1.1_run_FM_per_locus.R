@@ -1,7 +1,7 @@
 #!/usr/bin/env Rscript
 
 args = commandArgs(trailingOnly = TRUE)
-setwd("/gpfs/commons/groups/nygcfaculty/lappalainen_singh/finemapping_autoimmune")
+setwd("/gpfs/commons/groups/nygcfaculty/lappalainen_singh/finemapping_cluster")
 source("src/finemapping_functions.R")
 
 library(susieR)

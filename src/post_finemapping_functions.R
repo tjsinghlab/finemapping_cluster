@@ -1,7 +1,7 @@
 
 ##reads in results
 read_in_finemap_res <- function(file_path, pattern){
-  file_list = list.files(paste0("/gpfs/commons/groups/nygcfaculty/lappalainen_singh/finemapping_autoimmune/", "/",file_path),
+  file_list = list.files(paste0("/gpfs/commons/groups/nygcfaculty/lappalainen_singh/finemapping_cluster/", "/",file_path),
                          pattern = pattern, full.names = TRUE)
   print(length(file_list))
   dfM.finemapped.0 = lapply(file_list, fread)

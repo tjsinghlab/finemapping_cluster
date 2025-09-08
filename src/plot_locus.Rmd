@@ -18,7 +18,7 @@ library(stringr)
 ```
 
 ```{r}
-source("/gpfs/commons/groups/nygcfaculty/lappalainen_singh/finemapping_autoimmune/src/post_finemapping_functions.R")
+source("/gpfs/commons/groups/nygcfaculty/lappalainen_singh/finemapping_cluster/src/post_finemapping_functions.R")
 res <- get_rsids_by_PIP_2.0("2015_IBD_EUR", "EUR", 0.25, "UKBB")
 ```
 
@@ -30,11 +30,11 @@ LOCUS <- "1:200874229"
 LD_REF <- "UKBB"
 ld_pop <- "EUR"
 
-ss_path <- paste0("/gpfs/commons/groups/nygcfaculty/lappalainen_singh/finemapping_autoimmune/", paste0("output/", sumstats_name, "/", ld_pop, "_",
+ss_path <- paste0("/gpfs/commons/groups/nygcfaculty/lappalainen_singh/finemapping_cluster/", paste0("output/", sumstats_name, "/", ld_pop, "_",
                               window_mb, "Mb_window/ss/", sumstats_name, "_ss_",
                               window_mb, "Mb_locus_", LOCUS, "_matched.z"))
 ss <- fread(ss_path) %>% dplyr::mutate(pval = pnorm((abs(beta)/se), lower.tail=F)*2)
-ld_path = paste0("/gpfs/commons/groups/nygcfaculty/lappalainen_singh/finemapping_autoimmune/",paste0("output/", sumstats_name, "/", ld_pop, "_",
+ld_path = paste0("/gpfs/commons/groups/nygcfaculty/lappalainen_singh/finemapping_cluster/",paste0("output/", sumstats_name, "/", ld_pop, "_",
                               window_mb, "Mb_window/ld/", sumstats_name, "_ss_",
                               window_mb, "Mb_locus_", LOCUS, "_matched.ld"))
 ld <- fread(ld_path)
@@ -76,7 +76,7 @@ finemapping_res_plot <- res %>%
 
 locus_zoom + finemapping_res_plot + plot_annotation(title = paste(STUDY, LOCUS, LD_REF, WINDOW_MB))
 
-ggsave(paste0("/gpfs/commons/groups/nygcfaculty/lappalainen_singh/finemapping_autoimmune/analysis/", paste(STUDY, LOCUS, LD_REF, WINDOW_MB, sep = "_"), ".pdf"), width = 10, height = 6)
+ggsave(paste0("/gpfs/commons/groups/nygcfaculty/lappalainen_singh/finemapping_cluster/analysis/", paste(STUDY, LOCUS, LD_REF, WINDOW_MB, sep = "_"), ".pdf"), width = 10, height = 6)
 ```
 
 

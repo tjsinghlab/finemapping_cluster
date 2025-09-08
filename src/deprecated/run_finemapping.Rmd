@@ -3,12 +3,14 @@ title: "run_finemapping.Rmd"
 output: html_document
 ---
 
+deprecated! old example
+
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
 ```{r}
-setwd("/gpfs/commons/groups/nygcfaculty/lappalainen_singh/finemapping_autoimmune")
+setwd("/gpfs/commons/groups/nygcfaculty/lappalainen_singh/finemapping_cluster")
 library(data.table)
 library(dplyr)
 library(ggplot2)
@@ -41,12 +43,12 @@ gwasEUR <- gwasEUR_og %>%
   separate(SNP, into = c("chromsome", "position", "A2", "A1"))
 gwasEUR <- gwasEUR %>% 
   select(chromosome = chromsome, position, allele1 = A1, allele2 = A2, beta = Beta, se = SE) 
-write_tsv(gwasEUR, "/gpfs/commons/groups/nygcfaculty/lappalainen_singh/finemapping_autoimmune/data/RA.EUR.assoc")
+write_tsv(gwasEUR, "/gpfs/commons/groups/nygcfaculty/lappalainen_singh/finemapping_cluster/data/RA.EUR.assoc")
 ```
 
 ```{r}
 #22,350 cases and 74823 controls
-setwd("/gpfs/commons/groups/nygcfaculty/lappalainen_singh/finemapping_autoimmune")
+setwd("/gpfs/commons/groups/nygcfaculty/lappalainen_singh/finemapping_cluster")
 generate_per_locus_data_and_submit_pipeline(df.leadSNP = leadSNPs.1, 
                                             path_df_sumstats = "data/RA.EUR.assoc", 
                                             sumstats_name = "2022_RA_EUR", 
@@ -76,12 +78,12 @@ leadSNPs.1 <- leadSNPs %>%
 
 gwasEUR <- gwasEUR_og %>% 
   select(rsid = variant_id, chromosome = chr, position = pos, allele1 = effect_allele, allele2 = other_allele, beta, se = standard_error) 
-write_tsv(gwasEUR, "/gpfs/commons/groups/nygcfaculty/lappalainen_singh/finemapping_autoimmune/data/T1D.EUR.assoc")
+write_tsv(gwasEUR, "/gpfs/commons/groups/nygcfaculty/lappalainen_singh/finemapping_cluster/data/T1D.EUR.assoc")
 ```
 
 ```{r}
 #18,942 T1D cases and 501,638 controls
-setwd("/gpfs/commons/groups/nygcfaculty/lappalainen_singh/finemapping_autoimmune")
+setwd("/gpfs/commons/groups/nygcfaculty/lappalainen_singh/finemapping_cluster")
 generate_per_locus_data_and_submit_pipeline(df.leadSNP = leadSNPs.1, 
                                             path_df_sumstats = "data/T1D.EUR.assoc", 
                                             sumstats_name = "2021_T1D_EUR", 

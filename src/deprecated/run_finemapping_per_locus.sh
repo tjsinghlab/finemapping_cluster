@@ -3,7 +3,7 @@
 #SBATCH --mem=32g
 #SBATCH --output=log/%x.%j.out
 
-cd /gpfs/commons/groups/nygcfaculty/lappalainen_singh/finemapping_autoimmune
+cd /gpfs/commons/groups/nygcfaculty/lappalainen_singh/finemapping_cluster
 module purge
 module load R/4.2.2 
 

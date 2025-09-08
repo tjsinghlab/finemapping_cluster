@@ -4,7 +4,7 @@
 #SBATCH --output=log/3.1.0_run.%j.tmp.out
 #SBATCH --error=log/3.1.0_run.%j.tmp.err
 #
-cd /gpfs/commons/groups/nygcfaculty/lappalainen_singh/finemapping_autoimmune
+cd /gpfs/commons/groups/nygcfaculty/lappalainen_singh/finemapping_cluster
 
 # Function to initialize Conda and activate an environment
 initialize_conda() {
