@@ -1,6 +1,6 @@
 # Fine-mapping pipeline
 
-This repo can be used to perform fine-mapping with SuSiE and CARMA on a large, shared computing cluster.
+This repo can be used to perform fine-mapping with SuSiE and CARMA on a large, shared computing cluster with reference LD from the Pan-UK Biobank resource.
 
 ### Important Folders:
 	•	src: Contains scripts for running the pipeline.
