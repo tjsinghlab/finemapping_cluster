@@ -1,4 +1,4 @@
-# Fine-mapping pipeline to be used with computing cluster such as slurm
+# Fine-mapping pipeline
 
 This repo can be used to perform fine-mapping with SuSiE and CARMA on a large, shared computing cluster.
 
