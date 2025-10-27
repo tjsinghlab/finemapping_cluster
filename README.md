@@ -1,157 +1,127 @@
-# Team Project Template
+# Fine-mapping pipeline to be used with computing cluster such as slurm
 
-This repository serves as the default template for analysis projects within the team.
+This repo can be used to perform fine-mapping with SuSiE and CARMA on a large, shared computing cluster.
 
-## Main Features
+### Important Folders:
+	•	src: Contains scripts for running the pipeline.
+	•	output: Contains the output of the finemapping process.
+	•	data: Will contain summary statistics and lead SNPs.
 
-Buildable Package: This template can be built into a package and easily imported into other projects.
+### Installation
+The pipeline requires the use of hail and Google Cloud SDK. We can install these in a conda environment by installing from the file hail_env.yml located in the base folder:
 
-Modules Included: Comes with several built-in modules such as datatracker, teamconnector, and findhere to streamline your project development.
+mamba env create -f hail_env.yml
 
-Use this template to jump-start your analysis projects and ensure you have a consistent structure across the team.
+This requires that you have conda and mamba installed (mamba will drastically improve installation times). 
 
-## Installation
+Once the hail environment is installed you can activate it using 
 
-To get started with this template, follow these steps:
+conda activate hail_env
 
-Create a new repository on GitHub by clicking "New" on the dashboard.
+Once activated you will have to install CARMA directly in an R session:
 
-Choose a pre-defined template from the list under "Repository template."
+R -e "remotes::install_github('ZikunY/CARMA')"
 
-Name your repository and set its visibility.
+You will have to define project and region, and install gcloud beta in order to create a virtual machine on Google Cloud:
 
-Click "Create repository" to initialize the repo with the chosen template.
-
-Clone the repository to your local machine using the command `git clone <your-new-repo-url>`.
-
-Make changes to the code as needed.
-
-**Push** your changes to the repository using the command `git push`.
-
-To customize this template for your project, you'll need to replace some placeholders:
-
-Search for `{{ cookiecutter.full_name }}` and replace it with the appropriate full name associated with this repository.
-
-Look for `{{ cookiecutter.project_slug }}` and substitute it with the repository name or slug you're using.
-
-Replace `{{ cookiecutter.project_short_description }}` with a concise description of this repository's purpose or functionality.
-
-## Usage
-
-### Update pip
-
-Update your pip package manager with the following command:
-
-```bash
-make update-pip
-```
-
-### Create Environment
-
-To create a new environment:
-
-```bash
-make create-env
-```
-
-After that, enter the created Conda environment and only run commands in that environment.
-
-```bash
-make act
-```
-
-### Set Environment Variables
-
-Make sure your environment variables are set appropriately according to `teamconnector` in `~/.env`.
-To set up your environment variables:
-
-```bash
-make set-env
-tcinit ~
-```
-
-### Install Versioneer
-
-To install Versioneer:
-
-```bash
-make install-version
-```
-
-### Install Current Package
-
-For an interactive installation of the current package:
-
-```bash
-make install
-```
-
-### Update packages
-
-Running `make install` will not install the most up-to-date packages from PyPI. To update all packages in `requirements.txt` to the newest version, you can use the following command:
-
-```bash
-make install-reqs
-```
+gcloud config set project $PROJECTID
+gcloud config set compute/region us-central1
+gcloud components install beta
 
 
-### Manage Dependencies
+### Running the pipeline
 
-To install or update the required packages:
+#### Activate conda environment
 
-```bash
-make install-reqs
-make install-dev
-```
+If you haven’t already, make sure to activate the conda environment for running the pipeline:
 
-## Version Information
+conda activate hail_env
 
-### Get Version
+Google Cloud Authentication
 
-To get the version of this library:
+Before starting the pipeline you will have to login to gcloud:
 
-```bash
-make version
-```
+gcloud auth login --no-launch-browser
 
-### Get Specific Library Version
+You will receive a link to login to Google Cloud. Copy it into your browser and follow the instructions. Return the code after you have authenticated your login.
 
-To get the version of a specific Python library (e.g., hail):
+#### Pipeline
 
-```bash
-make lib-version NAME=hail
-make hail-version
-```
+We should now be ready to run the actual pipeline. The pipeline consists of three scripts: 
 
-## Install Java 11 using Conda Forge
+1.0.0_prep_locus_ss.sh - Prepares loci and uploads them to cloud \
+2.0.0_get_LDmat.py - Runs on the cloud to generate LD matrices \
+3.1.0_run_FM_per_locus.sh - Performs finemapping with Susie and CARMA
 
-Hail requires Java 11 for running on local machines, whether it's a SLURM cluster or a local Mac. You can use the Conda Forge package manager.
+##### 1.0.0_prep_locus_ss.sh
 
-1. **Open Terminal**
+We can run the first script by navigating to the src folder and running:
 
-2. **Add Conda-Forge Channel**
-   ```bash
-   conda config --add channels conda-forge
-   ```
+sbatch src/1.0.0_prep_locus_ss.sh [/path/to/lead_SNP_file] [gcloud_sumstats_name] [/path/to/sumstats] [Ancestry] [Region size]
 
-3. **Install Java 11**
+Arguments:
+Path to lead snp file
+Name of project to be created on google cloud
+Path to summary statistics
+Ancestry (we tend to use three-letter abbreviation like EUR for european)
+Region size in Mbp (for 1.5Mbp region around each lead SNP you should put in 1.5, leading to a total window size of 3Mb)
 
-   ```bash
-   conda install -c conda-forge openjdk=11
-   ```
+Example:
 
-4. **Verify Installation**
+sbatch src/1.0.0_prep_locus_ss.sh data/2016_27723757_VIT_EUR_leadSNPs.tsv 2016_27723757_VIT_EUR data/2016_27723757_VIT_EUR.assoc EUR 1.5
 
-   ```bash
-   java -version
-   ```
+##### 2.0.0_get_LDmat.py
+
+The second script needs to be run  on a virtual machine (VM) on Google Cloud. To initiate this we run:
+
+CLOUD_PROJECT=nygc-comp-d-95c4
+REGION=us-central1
+NAME="$(whoami)-cluster" 
+SERVICE_ACCOUNT=project-service-account@nygc-comp-d-95c4.iam.gserviceaccount.com
+
+hailctl dataproc start $NAME \
+  --project $CLOUD_PROJECT \
+  --region $REGION \
+  --no-address \
+  --max-age 8h \
+  --num-preemptible-workers 2 \
+  --num-workers 2 \
+  --max-idle 30m \
+  --service-account $SERVICE_ACCOUNT \
+  --subnet subnet-10-128
+
+Once you have run this it will need a few minutes to initiate the VM. When this is done you can run the script to obtain the LD Matrix by running:
+
+hailctl dataproc submit $NAME src/2.0.0_get_LDmat.py --ss_name [gcloud_sumstats_name] --window_mb [Region size]
+
+The gcloud_sumstats_name must match the name you chose when running script 1.0.0_prep_locus_ss.sh
+
+
+Example:
+hailctl dataproc submit $NAME src/2.0.0_get_LDmat.py --ss_name 2016_27723757_VIT_EUR --window_mb 1.5
+
+
+##### 3.0.0_run_FM.sh
+
+Final step is to run the finemapping pipeline using both CARMA and SuSiE. The script can be initiated from the src directory using:
+
+sbatch src/3.0.0_run_FM.sh [gcloud_sumstats_name] [Ancestry] [n samples] [n_cases] [Region size]
+
+Example:
+sbatch src/3.0.0_run_FM.sh 2016_27723757_VIT_EUR EUR 40258 2853 1.5
+
+Here n samples refers to the total number of samples used in the GWAS study while n cases refers to only the number of cases. Both these numbers can be found in the GWAS catalog entry for the study of use.
+
+
 
 ## Cite
 
 ## Maintainer
 
-TJ Singh lab @ singhlab@nygenome.org
+Sophia Gunn @ sgunn@nygenome.org
 
 ## Acknowledgements
+
+Thank you to Nathanael Andrews for assembling README!
 
 ## Release Notes
